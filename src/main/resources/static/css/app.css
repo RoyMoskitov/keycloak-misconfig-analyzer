@@ -1,0 +1,220 @@
+
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #0b0c10;
+    color: #e6e7eb;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.5;
+}
+
+
+h1, h2, h3, h4, h5, h6 {
+    color: #f9fafb;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+p {
+    margin-bottom: 0.5rem;
+    color: #d1d5db;
+}
+
+.small {
+    color: #cbd5f5;
+}
+
+code, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #c7d2fe;
+    background: none;
+}
+
+
+
+.card {
+    background-color: #12131a;
+    border: 1px solid #1f2230;
+    border-radius: 12px;
+}
+
+.summary-value {
+    font-size: 1.4rem;
+    font-weight: 500;
+    color: #f3f4f6;
+}
+
+
+label {
+    font-size: 0.85rem;
+    color: #c7c9d1;
+    margin-bottom: 4px;
+}
+
+.form-control {
+    background-color: #0b0c10;
+    border: 1px solid #2a2d3a;
+    color: #f3f4f6;
+    border-radius: 8px;
+}
+
+.form-control::placeholder {
+    color: #6b7280;
+}
+
+.form-control:focus {
+    background-color: #0b0c10;
+    border-color: #6366f1;
+    color: #ffffff;
+    box-shadow: none;
+}
+
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+}
+
+.btn-primary {
+    background-color: #6366f1;
+    border: none;
+}
+
+.btn-primary:hover {
+    background-color: #4f46e5;
+}
+
+.btn-secondary {
+    background-color: #1f2230;
+    border: 1px solid #2a2d3a;
+    color: #e6e7eb;
+}
+
+.btn-secondary:hover {
+    background-color: #26293a;
+}
+
+.check-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.check-id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8rem;
+    color: #a5b4fc;
+}
+
+.check-status {
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    font-weight: 500;
+}
+
+
+.finding {
+    background-color: #0e1016;
+    border: 1px solid #26293a;
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 12px;
+}
+
+.finding:hover {
+    border-color: #3b3f55;
+}
+
+.finding-title {
+    font-weight: 500;
+    color: #f9fafb;
+}
+
+.finding-description {
+    font-size: 0.9rem;
+    color: #d1d5db;
+}
+
+.finding-recommendation {
+    font-size: 0.85rem;
+    color: #e5e7eb;
+}
+
+.badge {
+    font-size: 0.7rem;
+    font-weight: 500;
+    padding: 4px 8px;
+    border-radius: 6px;
+    letter-spacing: 0.06em;
+}
+
+.severity-HIGH {
+    background-color: #3f0d0d;
+    color: #fecaca;
+}
+
+.severity-MEDIUM {
+    background-color: #4a2c0a;
+    color: #fde68a;
+}
+
+.severity-LOW {
+    background-color: #1e293b;
+    color: #bfdbfe;
+}
+
+.severity-INFO {
+    background-color: #27272a;
+    color: #d4d4d8;
+}
+
+
+.status-DETECTED {
+    color: #f87171;
+}
+
+.status-OK {
+    color: #34d399;
+}
+
+.status-ERROR {
+    color: #f87171;
+}
+
+.status-WARNING {
+    color: #fbbf24;
+}
+
+
+details summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: #c7d2fe;
+}
+
+details ul {
+    margin-top: 8px;
+    padding-left: 18px;
+}
+
+details li {
+    font-size: 0.8rem;
+    color: #e5e7eb;
+}
+
+
+a {
+    color: #818cf8;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+hr {
+    border-color: #26293a;
+}

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Scan Report</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+          rel="stylesheet">
+
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+
+<div class="container my-4">
+
+    <div class="mb-4">
+        <h4>Scan report</h4>
+        <div class="small">
+            <span th:text="${report.target}"></span>
+            &middot;
+            <span th:text="${report.scanId}"></span>
+        </div>
+    </div>
+
+    <div class="card mb-4 p-3">
+        <div class="row text-center">
+            <div class="col">
+                <div class="small">Total</div>
+                <div class="summary-value"
+                     th:text="${report.summary.totalChecks}"></div>
+            </div>
+            <div class="col">
+                <div class="small">Detected</div>
+                <div class="summary-value status-DETECTED"
+                     th:text="${report.summary.detected}"></div>
+            </div>
+            <div class="col">
+                <div class="small">OK</div>
+                <div class="summary-value status-OK"
+                     th:text="${report.summary.ok}"></div>
+            </div>
+            <div class="col">
+                <div class="small">Errors</div>
+                <div class="summary-value status-ERROR"
+                     th:text="${report.summary.errors}"></div>
+            </div>
+        </div>
+    </div>
+
+    <div th:each="check : ${report.results}" class="card mb-3 p-3">
+
+        <div class="check-header">
+            <span class="check-id"
+                  th:text="${check.checkId}"></span>
+
+            <span class="check-status"
+                  th:class="'check-status status-' + ${check.status}"
+                  th:text="${check.status}"></span>
+        </div>
+
+        <div th:if="${check.error}" class="mt-2 status-ERROR">
+            <pre th:text="${check.error}"></pre>
+        </div>
+
+        <div th:each="finding : ${check.findings}" class="finding">
+
+            <div class="d-flex justify-content-between mb-1">
+                <span class="finding-title"
+                      th:text="${finding.title}"></span>
+
+                <span class="badge"
+                      th:class="'severity-' + ${finding.severity}"
+                      th:text="${finding.severity}"></span>
+            </div>
+
+            <div class="finding-description mb-2"
+                 th:text="${finding.description}"></div>
+
+            <div th:if="${finding.recommendation}"
+                 class="finding-recommendation">
+                <strong>Recommendation:</strong>
+                <span th:text="${finding.recommendation}"></span>
+            </div>
+
+            <details class="mt-2">
+                <summary>Evidence</summary>
+                <ul>
+                    <li th:each="e : ${finding.evidence}">
+                        <code th:text="${e.key}"></code>
+                        =
+                        <span th:text="${e.value}"></span>
+                    </li>
+                </ul>
+            </details>
+
+        </div>
+    </div>
+
+    <a href="/" class="btn btn-secondary mt-3">
+        New scan
+    </a>
+
+</div>
+
+</body>
+</html>
