@@ -18,6 +18,7 @@ class FieldLevelAuthorizationCheck : SecurityCheck {
 
         try {
             val client = context.adminService.getClientRepresentation()
+            context.adminService.getClientResource()?.authorization()?.policies()
 
             if (client == null) {
                 return CheckResult(

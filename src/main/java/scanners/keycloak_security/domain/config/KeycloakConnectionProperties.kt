@@ -6,9 +6,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class KeycloakConnectionProperties(
     var serverUrl: String = "http://localhost:8180",
     var realm: String = "master",
-    var clientId: String = "service-account",
+    var clientId: String = "admin-cli",
     var username: String = "admin",
-    var password: String = "6e9NgbJPXKEvaCadnEDrmnFPJbdjiuOk",
+    var password: String = "adminpass",
     var verifySsl: Boolean = true
 )
 

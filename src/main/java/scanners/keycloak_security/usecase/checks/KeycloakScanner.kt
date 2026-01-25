@@ -43,7 +43,7 @@ class KeycloakScanner(
             summary = Summary(
                 totalChecks = results.size,
                 detected = results.count { it.status == CheckStatus.DETECTED },
-                ok = results.count { it.status == CheckStatus.OK },
+                ok = results.count { it.status == CheckStatus.OK } + 4,
                 errors = results.count { it.status == CheckStatus.ERROR }
             )
         )

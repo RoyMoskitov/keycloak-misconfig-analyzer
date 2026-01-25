@@ -14,14 +14,14 @@ open class KeycloakAdminClientConfig {
         return org.keycloak.admin.client.KeycloakBuilder.builder()
             .serverUrl(props.serverUrl)
             .realm(props.realm)
-            .grantType(OAuth2Constants.CLIENT_CREDENTIALS)
-            .clientId(props.clientId)
-            .clientSecret(props.password)
-            .build()
-
+//            .grantType(OAuth2Constants.CLIENT_CREDENTIALS)
 //            .clientId(props.clientId)
-//            .username(props.username)
-//            .password(props.password)
+//            .clientSecret(props.password)
 //            .build()
+
+            .clientId(props.clientId)
+            .username(props.username)
+            .password(props.password)
+            .build()
     }
 }

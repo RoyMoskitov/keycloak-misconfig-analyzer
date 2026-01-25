@@ -4,6 +4,7 @@ import jakarta.ws.rs.ForbiddenException
 import lombok.extern.slf4j.Slf4j
 import org.keycloak.admin.client.resource.ClientResource
 import org.keycloak.representations.idm.ClientRepresentation
+import org.keycloak.representations.idm.ClientScopeRepresentation
 import org.keycloak.representations.idm.IdentityProviderRepresentation
 import org.keycloak.representations.idm.KeysMetadataRepresentation
 import org.slf4j.LoggerFactory
@@ -223,5 +224,10 @@ class KeycloakAdminService(
             emptyList()
         }
     }
+
+    fun getClientScope(realmId: String, scopeId: String): ClientScopeRepresentation {
+        return keycloak.realm(realmId).clientScopes().get(scopeId).toRepresentation()
+    }
+
 
 }
