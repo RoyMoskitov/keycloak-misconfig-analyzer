@@ -1,0 +1,9 @@
+keycloak-audit:
+  server-url: https://localhost:8443
+  realm: master
+  client-id: admin-cli
+  username: admin
+  password: adminpass
+
+server:
+  port: 8080
