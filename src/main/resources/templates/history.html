@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><title>History</title><link rel="stylesheet" href="/css/app.css?v=2" th:href="@{/css/app.css?v=2}"></head>
+<body>
+<nav class="navbar"><div class="navbar-logo"><div class="dot"></div>Keycloak Scanner</div><div class="navbar-links"><a href="/">Scan</a><a href="/history" class="active">History</a><a href="/diff">Diff</a><a href="/baselines">Baselines</a></div></nav>
+<div class="wrap">
+    <h1>Scan History</h1>
+    <div class="subtitle">All previous scan results</div>
+    <div th:if="${scans.isEmpty()}" class="empty section" style="padding:48px">No scans yet. <a href="/">Run your first scan</a></div>
+    <div th:if="${!scans.isEmpty()}" class="section">
+        <table>
+            <thead><tr><th>ID</th><th>Target</th><th>Realm</th><th>Date</th><th>Detected</th><th>OK</th><th></th></tr></thead>
+            <tbody>
+                <tr th:each="s : ${scans}">
+                    <td><a th:href="@{'/history/' + ${s.scanId}}" th:text="${#strings.abbreviate(s.scanId, 12)}"></a></td>
+                    <td th:text="${s.target}"></td>
+                    <td th:text="${s.realm}"></td>
+                    <td style="font-size:0.82rem" th:text="${s.startedAt}"></td>
+                    <td><span class="badge b-detected" th:text="${s.detected}"></span></td>
+                    <td><span class="badge b-ok" th:text="${s.ok}"></span></td>
+                    <td><a th:href="@{'/history/' + ${s.scanId}}" class="btn-action" style="padding:5px 12px;font-size:0.78rem">View</a></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>

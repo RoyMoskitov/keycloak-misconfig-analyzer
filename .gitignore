@@ -32,6 +32,9 @@ build/
 ### VS Code ###
 .vscode/
 
+### Database ###
+data/
+
 ### Certificates and keys ###
 *.crt
 *.key
@@ -39,3 +42,4 @@ build/
 *.jks
 *.cnf
 *.pem
+/.claude/

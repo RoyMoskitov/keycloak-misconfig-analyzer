@@ -108,6 +108,34 @@ class SessionTimeoutEnforcementCheck : SecurityCheck {
             )
         }
 
+        // Проверка Remember Me — создаёт отдельные долгоживущие сессии
+        val rememberMe = realm.isRememberMe ?: false
+        if (rememberMe) {
+            val rememberMeTimeout = realm.ssoSessionMaxLifespanRememberMe ?: 0
+            if (rememberMeTimeout <= 0) {
+                // Remember Me включён, но без отдельного лимита — используется ssoSessionMax
+                // Это OK, но стоит отметить
+            } else if (rememberMeTimeout > MAX_SSO_MAX_SECONDS) {
+                findings += Finding(
+                    id = id(),
+                    title = "Remember Me сессии слишком долгоживущие",
+                    description = "Remember Me включён с таймаутом $rememberMeTimeout секунд " +
+                            "(${rememberMeTimeout / 86400} дней). Это позволяет сессиям существовать " +
+                            "значительно дольше обычного лимита, увеличивая окно для session hijacking.",
+                    severity = Severity.MEDIUM,
+                    status = CheckStatus.DETECTED,
+                    realm = context.realmName,
+                    evidence = listOf(
+                        Evidence("rememberMe", true),
+                        Evidence("ssoSessionMaxLifespanRememberMe", rememberMeTimeout),
+                        Evidence("ssoSessionMaxLifespan", ssoMax)
+                    ),
+                    recommendation = "Ограничьте Remember Me таймаут разумным значением " +
+                            "(например, 7 дней = 604800 секунд)"
+                )
+            }
+        }
+
         // Проверка client-level overrides
         if (clientIdle > 0 && ssoIdle > 0 && clientIdle > ssoIdle) {
             findings += Finding(

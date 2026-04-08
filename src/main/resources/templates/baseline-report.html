@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><title>Filtered Report</title><link rel="stylesheet" href="/css/app.css?v=2" th:href="@{/css/app.css?v=2}"></head>
+<body>
+<nav class="navbar"><div class="navbar-logo"><div class="dot"></div>Keycloak Scanner</div><div class="navbar-links"><a href="/">Scan</a><a href="/history">History</a><a href="/diff">Diff</a><a href="/baselines" class="active">Baselines</a></div></nav>
+<div class="wrap">
+    <h1>Filtered Report</h1>
+    <div class="subtitle">Scan <span th:text="${filtered.scanId}"></span> filtered with baseline <span th:text="${filtered.baselineId}"></span></div>
+
+    <!-- Summary -->
+    <div class="stats-row" style="grid-template-columns: repeat(5, 1fr);">
+        <div class="stat-box"><div class="num num-white" th:text="${filtered.summary.totalFindings}"></div><div class="lbl">Total</div></div>
+        <div class="stat-box"><div class="num num-red" th:text="${filtered.summary.actionable}"></div><div class="lbl">Actionable</div></div>
+        <div class="stat-box"><div class="num num-yellow" th:text="${filtered.summary.acceptedRisk}"></div><div class="lbl">Accepted</div></div>
+        <div class="stat-box"><div class="num num-yellow" th:text="${filtered.summary.falsePositive}"></div><div class="lbl">False Pos.</div></div>
+        <div class="stat-box"><div class="num num-yellow" th:text="${filtered.summary.deferred}"></div><div class="lbl">Deferred</div></div>
+    </div>
+
+    <!-- Actionable findings -->
+    <div th:if="${!filtered.actionableFindings.isEmpty()}" class="section" style="margin-bottom:20px">
+        <div class="section-header">
+            <span class="section-title" style="color:#f87171">Actionable Findings</span>
+            <span class="badge b-detected" th:text="${filtered.actionableFindings.size()}"></span>
+        </div>
+        <div class="section-body">
+            <div th:each="f : ${filtered.actionableFindings}" class="finding-item">
+                <div class="finding-row">
+                    <div style="flex:1">
+                        <span class="finding-id" th:text="${f.id}"></span>
+                        <span class="finding-title" style="margin-left:8px" th:text="${f.title}"></span>
+                    </div>
+                    <span class="badge" th:classappend="${f.severity.name() == 'HIGH'} ? 'b-high' : (${f.severity.name() == 'MEDIUM'} ? 'b-medium' : 'b-low')" th:text="${f.severity}"></span>
+                </div>
+                <div class="finding-desc" th:text="${f.description}"></div>
+                <div class="finding-rec" th:if="${f.recommendation}" th:text="${f.recommendation}"></div>
+            </div>
+        </div>
+    </div>
+
+    <div th:if="${filtered.actionableFindings.isEmpty()}" class="section" style="margin-bottom:20px">
+        <div class="section-body empty" style="padding:32px;color:#4ade80;font-weight:600">
+            All findings are baselined. No actionable issues.
+        </div>
+    </div>
+
+    <!-- Baselined findings -->
+    <div th:if="${!filtered.baselinedFindings.isEmpty()}" class="section">
+        <div class="section-header">
+            <span class="section-title" style="color:#6b7280">Baselined Findings</span>
+            <span class="badge b-info" th:text="${filtered.baselinedFindings.size()}"></span>
+        </div>
+        <div class="section-body">
+            <details>
+                <summary class="evidence-toggle">Show baselined findings</summary>
+                <div th:each="bf : ${filtered.baselinedFindings}" class="finding-item" style="opacity:0.6">
+                    <div class="finding-row">
+                        <div style="flex:1">
+                            <span class="finding-id" th:text="${bf.finding.id}"></span>
+                            <span class="finding-title" style="margin-left:8px" th:text="${bf.finding.title}"></span>
+                        </div>
+                        <span class="badge b-info" th:text="${bf.baselineStatus}"></span>
+                    </div>
+                    <div class="finding-desc" th:if="${bf.justification}" th:text="'Justification: ' + ${bf.justification}"></div>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <div class="actions">
+        <a href="/baselines" class="btn-action">Back to Baselines</a>
+        <a href="/" class="btn-action">New Scan</a>
+    </div>
+</div>
+</body>
+</html>

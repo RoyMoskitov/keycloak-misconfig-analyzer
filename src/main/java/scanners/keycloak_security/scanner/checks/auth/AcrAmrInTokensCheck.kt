@@ -15,6 +15,13 @@ class AcrAmrPresenceCheck : SecurityCheck {
 
     override fun severity() = Severity.MEDIUM
 
+    companion object {
+        val INTERNAL_CLIENTS = setOf(
+            "account", "account-console", "admin-cli",
+            "broker", "realm-management", "security-admin-console"
+        )
+    }
+
     override fun run(context: CheckContext): CheckResult {
         val start = System.currentTimeMillis()
         val realm = context.adminService.getRealm()
@@ -22,6 +29,9 @@ class AcrAmrPresenceCheck : SecurityCheck {
         val findings = mutableListOf<Finding>()
 
         clients.forEach { client ->
+            if (client.clientId in INTERNAL_CLIENTS) return@forEach
+            // Пропускаем realm-management клиенты (формат: *-realm)
+            if (client.clientId?.endsWith("-realm") == true) return@forEach
 
             val mappers = mutableListOf<ProtocolMapperRepresentation>()
             mappers.addAll(client.protocolMappers ?: emptyList())

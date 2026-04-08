@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package keycloak.scanner;
+
+option java_multiple_files = true;
+option java_package = "scanners.keycloak_security.grpc";
+
+// External check modules implement this service.
+// The main scanner acts as a gRPC CLIENT and calls external modules.
+service ExternalCheckService {
+
+  // Returns metadata about all checks this module provides.
+  rpc ListChecks(ListChecksRequest) returns (ListChecksResponse);
+
+  // Executes a single check against the target Keycloak.
+  rpc RunCheck(RunCheckRequest) returns (RunCheckResponse);
+}
+
+message ListChecksRequest {}
+
+message ListChecksResponse {
+  repeated CheckMeta checks = 1;
+}
+
+message CheckMeta {
+  string id = 1;           // e.g. "CUSTOM-001"
+  string title = 2;
+  string description = 3;
+  Severity severity = 4;
+}
+
+message RunCheckRequest {
+  string check_id = 1;
+
+  // Keycloak connection params — external module connects to Keycloak itself
+  string server_url = 2;
+  string realm = 3;
+  string client_id = 4;
+  string username = 5;
+  string password = 6;
+}
+
+message RunCheckResponse {
+  string check_id = 1;
+  CheckStatus status = 2;
+  repeated Finding findings = 3;
+  int64 duration_ms = 4;
+  string error = 5;
+}
+
+message Finding {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  Severity severity = 4;
+  CheckStatus status = 5;
+  string realm = 6;
+  string client_id = 7;
+  repeated Evidence evidence = 8;
+  string recommendation = 9;
+}
+
+message Evidence {
+  string key = 1;
+  string value = 2;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  LOW = 1;
+  MEDIUM = 2;
+  HIGH = 3;
+  INFO = 4;
+}
+
+enum CheckStatus {
+  STATUS_UNSPECIFIED = 0;
+  DETECTED = 1;
+  OK = 2;
+  ERROR = 3;
+  WARNING = 4;
+}

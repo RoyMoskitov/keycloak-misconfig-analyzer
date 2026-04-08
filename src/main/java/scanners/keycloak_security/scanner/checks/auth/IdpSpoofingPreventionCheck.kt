@@ -26,9 +26,35 @@ class IdpSpoofingPreventionCheck : SecurityCheck {
         val findings = mutableListOf<Finding>()
 
         try {
+            val realm = context.adminService.getRealm()
             val idps = context.adminService.getIdentityProviders()
 
-            // Если нет внешних IdP, проверка не применима
+            // Проверяем duplicateEmailsAllowed — опасно в сочетании с IdP или даже без них
+            val duplicateEmails = realm.isDuplicateEmailsAllowed ?: false
+            if (duplicateEmails) {
+                val severity = if (idps.isNotEmpty()) Severity.HIGH else Severity.MEDIUM
+                findings += Finding(
+                    id = id(),
+                    title = "Разрешено дублирование email между пользователями",
+                    description = "duplicateEmailsAllowed=true. " +
+                            if (idps.isNotEmpty())
+                                "В сочетании с IdP brokering это позволяет создать второй аккаунт " +
+                                "с тем же email, что и у существующего пользователя — вектор для account takeover."
+                            else
+                                "Два пользователя могут иметь одинаковый email, что затрудняет " +
+                                "идентификацию и может привести к путанице при password reset.",
+                    severity = severity,
+                    status = CheckStatus.DETECTED,
+                    realm = context.realmName,
+                    evidence = listOf(
+                        Evidence("duplicateEmailsAllowed", true),
+                        Evidence("identityProvidersCount", idps.size)
+                    ),
+                    recommendation = "Отключите Duplicate Emails в настройках Realm → Login"
+                )
+            }
+
+            // Если нет внешних IdP, остальные проверки IdP spoofing не применимы
             if (idps.isEmpty()) {
                 return SecurityCheckHelper.buildCheckResult(id(), title(), findings, start, context.realmName)
             }

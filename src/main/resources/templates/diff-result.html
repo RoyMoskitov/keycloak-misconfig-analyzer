@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><title>Diff Result</title><link rel="stylesheet" href="/css/app.css?v=2" th:href="@{/css/app.css?v=2}"></head>
+<body>
+<nav class="navbar"><div class="navbar-logo"><div class="dot"></div>Keycloak Scanner</div><div class="navbar-links"><a href="/">Scan</a><a href="/history">History</a><a href="/diff">Diff</a><a href="/baselines">Baselines</a></div></nav>
+<div class="wrap">
+    <h1>Scan Comparison</h1>
+    <div class="subtitle" th:text="${diff.baseScanId + '  to  ' + diff.compareScanId}"></div>
+    <div class="stats-row" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat-box"><div class="num num-red" th:text="${diff.newFindings.size()}"></div><div class="lbl">New Issues</div></div>
+        <div class="stat-box"><div class="num num-green" th:text="${diff.resolvedFindings.size()}"></div><div class="lbl">Resolved</div></div>
+        <div class="stat-box"><div class="num num-white" th:text="${diff.unchangedFindings.size()}"></div><div class="lbl">Unchanged</div></div>
+    </div>
+    <div th:if="${!diff.newFindings.isEmpty()}" style="margin-bottom:24px">
+        <div class="diff-label is-new">New Issues</div>
+        <div th:each="f : ${diff.newFindings}" class="diff-card is-new">
+            <div style="display:flex;justify-content:space-between;align-items:center"><span class="diff-card-title" th:text="${f.title}"></span><span class="badge" th:classappend="${f.severity.name()=='HIGH'}?'b-high':(${f.severity.name()=='MEDIUM'}?'b-medium':'b-low')" th:text="${f.severity}"></span></div>
+            <div class="diff-card-desc" th:text="${f.description}"></div>
+        </div>
+    </div>
+    <div th:if="${!diff.resolvedFindings.isEmpty()}" style="margin-bottom:24px">
+        <div class="diff-label is-resolved">Resolved</div>
+        <div th:each="f : ${diff.resolvedFindings}" class="diff-card is-resolved">
+            <div style="display:flex;justify-content:space-between;align-items:center"><span class="diff-card-title" th:text="${f.title}"></span><span class="badge b-ok">RESOLVED</span></div>
+            <div class="diff-card-desc" th:text="${f.description}"></div>
+        </div>
+    </div>
+    <div th:if="${!diff.unchangedFindings.isEmpty()}"><details><summary class="diff-label is-unchanged" style="cursor:pointer">Unchanged (<span th:text="${diff.unchangedFindings.size()}"></span>)</summary><div th:each="f : ${diff.unchangedFindings}" class="diff-card is-unchanged" style="margin-top:8px"><span class="diff-card-title" th:text="${f.title}"></span></div></details></div>
+    <div class="actions"><a href="/diff" class="btn-action">New Comparison</a><a href="/" class="btn-action">New Scan</a></div>
+</div>
+</body>
+</html>

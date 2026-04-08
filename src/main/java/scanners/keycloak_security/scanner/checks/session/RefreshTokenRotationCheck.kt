@@ -10,7 +10,7 @@ class RefreshTokenRotationCheck : SecurityCheck {
 
     override fun id() = "7.2.4"
     override fun title() = "Ротация refresh-токенов"
-    override fun description() = "Проверка ротации и защиты от replay refresh-токенов (ASVS V7.2.4, V10.4.5)"
+    override fun description() = "Проверка ротации и защиты от replay refresh-токенов (ASVS V7.2.4, V10.4.5, V7.4.1)"
     override fun severity() = Severity.HIGH
 
     override fun run(context: CheckContext): CheckResult {

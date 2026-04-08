@@ -62,21 +62,8 @@ class OtpBindingCheck : SecurityCheck {
                 // Анализируем конфигурацию
                 analyzeOtpConfig(flowAlias, execution, config.config, findings, context)
             } else {
-                // OTP без кастомной конфигурации (использует настройки по умолчанию)
-                findings.add(Finding(
-                    id = id(),
-                    title = "OTP использует стандартную конфигурацию",
-                    description = "OTP authenticator в потоке '$flowAlias' использует конфигурацию по умолчанию",
-                    severity = Severity.LOW,
-                    status = CheckStatus.DETECTED,
-                    realm = context.realmName,
-                    evidence = listOf(
-                        Evidence("flow", flowAlias),
-                        Evidence("providerId", execution.providerId),
-                        Evidence("config", "default")
-                    ),
-                    recommendation = "Проверьте настройки OTP binding вручную в административной консоли"
-                ))
+                // OTP без кастомной конфигурации — дефолтные настройки Keycloak безопасны,
+                // не создаём finding чтобы не засорять отчёт шумом
             }
         }
     }

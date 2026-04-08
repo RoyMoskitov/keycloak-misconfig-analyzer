@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service
 import scanners.keycloak_security.config.KeycloakConnectionProperties
 import scanners.keycloak_security.service.KeycloakAdminService
 import scanners.keycloak_security.model.*
+import scanners.keycloak_security.persistence.ScanPersistenceService
 import java.time.Instant
 import java.util.*
 
@@ -11,18 +12,32 @@ import java.util.*
 class KeycloakScanner(
     private val checks: List<SecurityCheck>,
     private val adminService: KeycloakAdminService,
-    private val props: KeycloakConnectionProperties
+    private val props: KeycloakConnectionProperties,
+    private val persistenceService: ScanPersistenceService
 ) {
 
     fun scanWithParams(
-        serverUrl: String = "https://localhost:8182",realm: String = "master",
-        clientId: String = "admin-cli", username: String = "admin", password: String = "adminpass",
+        serverUrl: String, realm: String, clientId: String,
+        username: String = "", password: String = "",
+        clientSecret: String = "", grantType: String = "password",
+        authRealm: String = ""
     ): ScanReport {
         adminService.props.serverUrl = serverUrl
         adminService.props.clientId = clientId
-        adminService.props.username = username
-        adminService.props.password = password
         adminService.props.realm = realm
+        adminService.props.grantType = grantType
+        adminService.props.authRealm = authRealm
+
+        if (grantType == "client_credentials") {
+            adminService.props.clientSecret = clientSecret
+            adminService.props.username = ""
+            adminService.props.password = ""
+        } else {
+            adminService.props.username = username
+            adminService.props.password = password
+            adminService.props.clientSecret = ""
+        }
+
         return scan()
     }
 
@@ -35,7 +50,7 @@ class KeycloakScanner(
 
         val results = checks.map { it.run(context) }
 
-        return ScanReport(
+        val report = ScanReport(
             scanId = UUID.randomUUID().toString(),
             target = props.serverUrl,
             startedAt = startedAt.toString(),
@@ -48,6 +63,8 @@ class KeycloakScanner(
                 errors = results.count { it.status == CheckStatus.ERROR }
             )
         )
+
+        persistenceService.save(report, props.realm)
+        return report
     }
 }
-

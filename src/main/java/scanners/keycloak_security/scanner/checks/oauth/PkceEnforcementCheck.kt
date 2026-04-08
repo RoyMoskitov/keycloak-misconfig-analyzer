@@ -26,8 +26,9 @@ class PkceEnforcementCheck : SecurityCheck {
         val findings = mutableListOf<Finding>()
 
         context.adminService.getClients().forEach { client ->
-            // Пропускаем внутренние клиенты и те, у которых не включён Standard Flow
+            // Пропускаем внутренние клиенты и realm-management клиенты (*-realm)
             if (client.clientId in INTERNAL_CLIENTS) return@forEach
+            if (client.clientId?.endsWith("-realm") == true) return@forEach
             if (client.isStandardFlowEnabled != true) return@forEach
 
             val attrs = client.attributes ?: emptyMap()

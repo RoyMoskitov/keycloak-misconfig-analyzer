@@ -10,7 +10,7 @@ class TokenRevocationSupportCheck : SecurityCheck {
     override fun id() = "10.4.9"
     override fun title() = "Поддержка отзыва токенов пользователем"
     override fun description() =
-        "Проверка возможности отзыва refresh и access токенов пользователем"
+        "Проверка возможности отзыва refresh и access токенов пользователем (ASVS V10.4.9, V10.7.3)"
     override fun severity() = Severity.MEDIUM
 
     override fun run(context: CheckContext): CheckResult {

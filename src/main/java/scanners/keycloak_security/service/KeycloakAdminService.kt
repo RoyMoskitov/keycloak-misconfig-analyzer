@@ -16,28 +16,53 @@ import scanners.keycloak_security.model.TokenResponse
 
 @Service
 class KeycloakAdminService(
-    private val keycloak: org.keycloak.admin.client.Keycloak,
     val props: KeycloakConnectionProperties,
     private val restTemplate: RestTemplate
 ) {
     private val logger = LoggerFactory.getLogger(KeycloakAdminService::class.java)
 
-    fun realmResource() = keycloak.realm(props.realm)
+    private fun buildClient(): org.keycloak.admin.client.Keycloak {
+        // realm в builder — это realm для АУТЕНТИФИКАЦИИ (получения токена).
+        // authRealm позволяет явно указать realm аутентификации.
+        // По умолчанию: password grant → master, client_credentials → целевой realm.
+        val authRealm = props.authRealm.ifBlank {
+            if (props.grantType == "client_credentials") props.realm else "master"
+        }
+
+        val builder = org.keycloak.admin.client.KeycloakBuilder.builder()
+            .serverUrl(props.serverUrl)
+            .realm(authRealm)
+            .clientId(props.clientId)
+
+        return if (props.grantType == "client_credentials") {
+            builder
+                .grantType(org.keycloak.OAuth2Constants.CLIENT_CREDENTIALS)
+                .clientSecret(props.clientSecret)
+                .build()
+        } else {
+            builder
+                .username(props.username)
+                .password(props.password)
+                .build()
+        }
+    }
+
+    fun realmResource() = buildClient().realm(props.realm)
 
     fun getRealm(): org.keycloak.representations.idm.RealmRepresentation {
-        return keycloak.realm(props.realm).toRepresentation()
+        return buildClient().realm(props.realm).toRepresentation()
     }
 
     fun getClients(): List<org.keycloak.representations.idm.ClientRepresentation> {
-        return keycloak.realm(props.realm).clients().findAll()
+        return buildClient().realm(props.realm).clients().findAll()
     }
 
     fun getAuthenticationFlows() =
-        keycloak.realm(props.realm).flows()
+        buildClient().realm(props.realm).flows()
 
     fun getRequiredActions(): List<org.keycloak.representations.idm.RequiredActionProviderRepresentation> {
         return try {
-            keycloak.realm(props.realm).flows().requiredActions
+            buildClient().realm(props.realm).flows().requiredActions
         } catch (e: Exception) {
             logger.error("Ошибка при получении required actions: ${e.message}")
             emptyList()
@@ -46,7 +71,7 @@ class KeycloakAdminService(
 
     fun getUsers(): List<org.keycloak.representations.idm.UserRepresentation> {
         return try {
-            keycloak.realm(props.realm).users().list()
+            buildClient().realm(props.realm).users().list()
         } catch (e: Exception) {
             logger.error("Ошибка при получении пользователей: ${e.message}")
             emptyList()
@@ -83,7 +108,7 @@ class KeycloakAdminService(
 
     fun getAuthenticatorConfig(configId: String): org.keycloak.representations.idm.AuthenticatorConfigRepresentation? {
         return try {
-            keycloak.realm(props.realm).flows().getAuthenticatorConfig(configId)
+            buildClient().realm(props.realm).flows().getAuthenticatorConfig(configId)
         } catch (e: Exception) {
             logger.error("Ошибка при получении конфигурации аутентификатора $configId: ${e.message}")
             null
@@ -170,7 +195,9 @@ class KeycloakAdminService(
         return try {
             val keysMetadata = getRealmKeys()
             val activeKey = keysMetadata.find { key ->
-                key.use.name == "SIG" && key.status == "ACTIVE"
+                key.use?.name.equals("SIG", ignoreCase = true) &&
+                        key.status == "ACTIVE" &&
+                        key.type in listOf("RSA", "EC", "OKP")
             }
             activeKey?.publicKey
         } catch (e: Exception) {
@@ -180,19 +207,27 @@ class KeycloakAdminService(
     }
 
     fun getAccessToken(): TokenResponse {
-
+        val authRealm = props.authRealm.ifBlank {
+            if (props.grantType == "client_credentials") props.realm else "master"
+        }
         val tokenUrl =
-            "${props.serverUrl}/realms/${props.realm}/protocol/openid-connect/token"
+            "${props.serverUrl}/realms/$authRealm/protocol/openid-connect/token"
 
         val headers = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_FORM_URLENCODED
         }
 
         val body = LinkedMultiValueMap<String, String>().apply {
-            add("grant_type", "password")
-            add("client_id", props.clientId)
-            add("username", props.username)
-            add("password", props.password)
+            if (props.grantType == "client_credentials") {
+                add("grant_type", "client_credentials")
+                add("client_id", props.clientId)
+                add("client_secret", props.clientSecret)
+            } else {
+                add("grant_type", "password")
+                add("client_id", props.clientId)
+                add("username", props.username)
+                add("password", props.password)
+            }
         }
 
         val request = HttpEntity(body, headers)
@@ -209,7 +244,7 @@ class KeycloakAdminService(
 
     fun getRealmKeys(): List<org.keycloak.representations.idm.KeysMetadataRepresentation.KeyMetadataRepresentation> {
         return try {
-            keycloak
+            buildClient()
                 .realm(props.realm)
                 .keys()
                 .getKeyMetadata()
@@ -221,6 +256,6 @@ class KeycloakAdminService(
     }
 
     fun getClientScope(realmId: String, scopeId: String): ClientScopeRepresentation {
-        return keycloak.realm(realmId).clientScopes().get(scopeId).toRepresentation()
+        return buildClient().realm(realmId).clientScopes().get(scopeId).toRepresentation()
     }
 }

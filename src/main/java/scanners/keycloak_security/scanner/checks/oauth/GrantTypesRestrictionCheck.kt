@@ -84,6 +84,34 @@ class GrantTypesRestrictionCheck : SecurityCheck {
             }
         }
 
+        // Проверяем accessTokenLifespanForImplicitFlow на realm уровне
+        // Если implicit flow включён хоть у одного клиента, этот lifespan важен
+        val hasImplicitClients = context.adminService.getClients().any {
+            it.clientId !in INTERNAL_CLIENTS && it.isImplicitFlowEnabled == true
+        }
+        if (hasImplicitClients) {
+            val realm = context.adminService.getRealm()
+            val implicitLifespan = realm.accessTokenLifespanForImplicitFlow ?: 900
+            if (implicitLifespan > 600) {
+                findings += Finding(
+                    id = id(),
+                    title = "Долгоживущие токены для Implicit Flow",
+                    description = "accessTokenLifespanForImplicitFlow=$implicitLifespan секунд " +
+                            "(${implicitLifespan / 60} минут). Implicit flow передаёт токены через URL fragment — " +
+                            "долгоживущие токены увеличивают окно для перехвата через browser history.",
+                    severity = Severity.HIGH,
+                    status = CheckStatus.DETECTED,
+                    realm = context.realmName,
+                    evidence = listOf(
+                        Evidence("accessTokenLifespanForImplicitFlow", implicitLifespan),
+                        Evidence("recommendedMax", 600)
+                    ),
+                    recommendation = "Сократите accessTokenLifespanForImplicitFlow до ≤ 600 секунд, " +
+                            "а лучше отключите Implicit Flow полностью"
+                )
+            }
+        }
+
         return SecurityCheckHelper.buildCheckResult(id(), title(), findings, start, context.realmName)
     }
 }

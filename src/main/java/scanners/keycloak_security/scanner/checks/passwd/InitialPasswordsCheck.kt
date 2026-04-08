@@ -77,6 +77,35 @@ class InitialPasswordsCheck : SecurityCheck {
             )
         }
 
+        // Проверяем настроен ли SMTP — без него email verification и password reset не работают
+        val smtpServer = realm.smtpServer
+        val smtpConfigured = smtpServer != null && smtpServer["host"]?.isNotBlank() == true
+        val verifyEmailEnabled = realm.isVerifyEmail ?: false
+        val resetPasswordEnabled = realm.isResetPasswordAllowed ?: false
+
+        if (!smtpConfigured && (verifyEmailEnabled || resetPasswordEnabled)) {
+            findings.add(
+                Finding(
+                    id = id(),
+                    title = "SMTP не настроен при активных email-зависимых функциях",
+                    description = "SMTP сервер не настроен, но " +
+                            (if (verifyEmailEnabled) "Verify Email включён" else "") +
+                            (if (verifyEmailEnabled && resetPasswordEnabled) " и " else "") +
+                            (if (resetPasswordEnabled) "Reset Password включён" else "") +
+                            ". Без SMTP эти функции не работают — ложная безопасность.",
+                    severity = Severity.HIGH,
+                    status = CheckStatus.DETECTED,
+                    realm = context.realmName,
+                    evidence = listOf(
+                        Evidence("smtpConfigured", false),
+                        Evidence("verifyEmail", verifyEmailEnabled),
+                        Evidence("resetPasswordAllowed", resetPasswordEnabled)
+                    ),
+                    recommendation = "Настройте SMTP сервер в Realm Settings → Email"
+                )
+            )
+        }
+
         return if (findings.isNotEmpty()) {
             CheckResult(
                 checkId = id(),

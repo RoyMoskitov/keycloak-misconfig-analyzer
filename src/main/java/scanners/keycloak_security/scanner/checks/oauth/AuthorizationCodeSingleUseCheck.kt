@@ -5,6 +5,15 @@ import scanners.keycloak_security.model.*
 import scanners.keycloak_security.scanner.SecurityCheck
 import scanners.keycloak_security.scanner.SecurityCheckHelper
 
+/**
+ * ASVS V10.4.2: "authorization code can be used only once for a token request."
+ *
+ * Keycloak гарантирует single-use authorization code по умолчанию —
+ * это встроенное поведение, которое нельзя отключить через конфигурацию.
+ *
+ * Проверяем только то, что Standard Flow (Authorization Code Flow) используется
+ * вместо устаревших flows, которые не имеют concept одноразового кода.
+ */
 @Component
 class AuthorizationCodeSingleUseCheck : SecurityCheck {
 
@@ -14,56 +23,41 @@ class AuthorizationCodeSingleUseCheck : SecurityCheck {
         "Проверка одноразового использования authorization code (ASVS V10.4.2)"
     override fun severity() = Severity.HIGH
 
+    companion object {
+        val INTERNAL_CLIENTS = setOf(
+            "account", "account-console", "admin-cli",
+            "broker", "realm-management", "security-admin-console"
+        )
+    }
+
     override fun run(context: CheckContext): CheckResult {
         val start = System.currentTimeMillis()
         val findings = mutableListOf<Finding>()
 
-        // ASVS V10.4.2: "authorization code can be used only once for a token request.
-        // For the second valid request with an authorization code that has already been used,
-        // the authorization server must reject a token request and revoke any issued tokens."
-        //
-        // Keycloak обеспечивает single-use authorization code по умолчанию —
-        // это встроенное поведение, которое нельзя отключить через конфигурацию.
-        //
-        // Однако мы можем проверить связанные настройки, которые влияют на безопасность
-        // authorization code flow:
+        // Keycloak обеспечивает single-use auth code by design.
+        // Проверяем, что клиенты используют Authorization Code Flow (standard flow),
+        // а не Implicit Flow, который выдаёт токены напрямую без одноразового кода.
+        context.adminService.getClients().forEach { client ->
+            if (client.clientId in INTERNAL_CLIENTS) return@forEach
 
-        val realm = context.adminService.getRealm()
-
-        // 1. Проверяем включён ли revoke refresh token — ASVS требует, чтобы при повторном
-        //    использовании кода все ранее выданные токены были отозваны.
-        //    revokeRefreshToken обеспечивает инфраструктуру для отзыва токенов.
-        val revokeRefreshToken = realm.revokeRefreshToken ?: false
-        if (!revokeRefreshToken) {
-            findings += Finding(
-                id = id(),
-                title = "Отзыв токенов не включён",
-                description = "ASVS V10.4.2 требует, чтобы при повторном использовании authorization code " +
-                        "все ранее выданные токены были отозваны. Опция 'Revoke Refresh Token' отключена, " +
-                        "что ослабляет механизм обнаружения replay-атак.",
-                severity = Severity.MEDIUM,
-                status = CheckStatus.DETECTED,
-                realm = context.realmName,
-                evidence = listOf(Evidence("revokeRefreshToken", false)),
-                recommendation = "Включите 'Revoke Refresh Token' для полного соответствия V10.4.2"
-            )
-        }
-
-        // 2. Проверяем время жизни authorization code — короткий код снижает окно для replay
-        val codeLifespan = realm.accessCodeLifespan ?: 60
-        if (codeLifespan > 60) {
-            findings += Finding(
-                id = id(),
-                title = "Authorization code живёт дольше 60 секунд",
-                description = "accessCodeLifespan=$codeLifespan секунд. Хотя Keycloak обеспечивает " +
-                        "single-use кодов, более длительное время жизни увеличивает окно, " +
-                        "в течение которого перехваченный код может быть использован первым.",
-                severity = Severity.LOW,
-                status = CheckStatus.DETECTED,
-                realm = context.realmName,
-                evidence = listOf(Evidence("accessCodeLifespan", codeLifespan)),
-                recommendation = "Для максимальной безопасности установите Access Code Lifespan ≤ 60 секунд"
-            )
+            if (client.isImplicitFlowEnabled == true && client.isStandardFlowEnabled != true) {
+                findings += Finding(
+                    id = id(),
+                    title = "Клиент '${client.clientId}' не использует Authorization Code Flow",
+                    description = "У клиента включён только Implicit Flow, который выдаёт токены " +
+                            "напрямую без одноразового authorization code. " +
+                            "ASVS V10.4.2 требует модель с одноразовым кодом.",
+                    severity = Severity.HIGH,
+                    status = CheckStatus.DETECTED,
+                    realm = context.realmName,
+                    clientId = client.clientId,
+                    evidence = listOf(
+                        Evidence("implicitFlowEnabled", true),
+                        Evidence("standardFlowEnabled", client.isStandardFlowEnabled ?: false)
+                    ),
+                    recommendation = "Включите Standard Flow и отключите Implicit Flow"
+                )
+            }
         }
 
         return SecurityCheckHelper.buildCheckResult(id(), title(), findings, start, context.realmName)

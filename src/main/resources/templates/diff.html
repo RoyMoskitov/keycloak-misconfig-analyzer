@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><title>Compare</title><link rel="stylesheet" href="/css/app.css?v=2" th:href="@{/css/app.css?v=2}"></head>
+<body>
+<nav class="navbar"><div class="navbar-logo"><div class="dot"></div>Keycloak Scanner</div><div class="navbar-links"><a href="/">Scan</a><a href="/history">History</a><a href="/diff">Diff</a><a href="/baselines">Baselines</a></div></nav>
+<div class="wrap-narrow">
+    <div class="form-card">
+        <h2>Compare Scans</h2>
+        <div class="desc">See what changed between two scans</div>
+        <div th:if="${scans.size() < 2}" class="empty">Need at least 2 scans. <a href="/">Run a scan first</a></div>
+        <form th:if="${scans.size() >= 2}" action="/diff/result" method="get">
+            <div class="field"><label>Base Scan (before)</label><select name="baseScanId"><option th:each="s : ${scans}" th:value="${s.scanId}" th:text="${s.realm + ' @ ' + s.startedAt + ' (' + s.detected + ' issues)'}"></option></select></div>
+            <div class="field"><label>Compare Scan (after)</label><select name="compareScanId"><option th:each="s : ${scans}" th:value="${s.scanId}" th:text="${s.realm + ' @ ' + s.startedAt + ' (' + s.detected + ' issues)'}"></option></select></div>
+            <button type="submit" class="btn-submit">Compare</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>

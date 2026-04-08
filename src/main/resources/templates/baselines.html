@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><title>Baselines</title><link rel="stylesheet" href="/css/app.css?v=2" th:href="@{/css/app.css?v=2}"></head>
+<body>
+<nav class="navbar"><div class="navbar-logo"><div class="dot"></div>Keycloak Scanner</div><div class="navbar-links"><a href="/">Scan</a><a href="/history">History</a><a href="/diff">Diff</a><a href="/baselines" class="active">Baselines</a></div></nav>
+<div class="wrap">
+    <h1>Baseline Management</h1>
+    <div class="subtitle">Suppress known/accepted findings to see only new issues</div>
+
+    <!-- Create baseline -->
+    <div class="section" style="margin-bottom:24px">
+        <div class="section-header"><span class="section-title">Create Baseline from Scan</span></div>
+        <div class="section-body">
+            <div th:if="${scans.isEmpty()}" class="empty">No scans available. <a href="/">Run a scan first</a></div>
+            <form th:if="${!scans.isEmpty()}" action="/baselines/create" method="post">
+                <div class="field"><label>Source Scan</label>
+                    <select name="scanId" class="input">
+                        <option th:each="s : ${scans}" th:value="${s.scanId}" th:text="${s.realm + ' @ ' + s.startedAt + ' (' + s.detected + ' detected)'}"></option>
+                    </select>
+                </div>
+                <div class="field"><label>Baseline Name</label><input name="name" class="input" placeholder="e.g. Production baseline Q1 2026" required></div>
+                <div class="field"><label>Mark all findings as</label>
+                    <select name="status" class="input">
+                        <option value="ACCEPTED_RISK">Accepted Risk</option>
+                        <option value="FALSE_POSITIVE">False Positive</option>
+                        <option value="DEFERRED">Deferred</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-submit" style="max-width:300px">Create Baseline</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Existing baselines -->
+    <div class="section">
+        <div class="section-header"><span class="section-title">Existing Baselines</span></div>
+        <div class="section-body">
+            <div th:if="${baselines.isEmpty()}" class="empty">No baselines yet. Create one above.</div>
+            <table th:if="${!baselines.isEmpty()}">
+                <thead><tr><th>Name</th><th>Created</th><th>Entries</th><th>Apply to Scan</th></tr></thead>
+                <tbody>
+                    <tr th:each="b : ${baselines}">
+                        <td style="font-weight:600;color:#eef0f4" th:text="${b.name}"></td>
+                        <td style="font-size:0.82rem" th:text="${b.createdAt}"></td>
+                        <td><span class="badge b-info" th:text="${b.entries.size()}"></span></td>
+                        <td>
+                            <form th:if="${!scans.isEmpty()}" style="display:flex;gap:8px;align-items:center" th:action="@{'/baselines/' + ${b.id} + '/apply'}" method="get">
+                                <select name="scanId" class="input" style="max-width:300px;padding:6px 10px;font-size:0.8rem">
+                                    <option th:each="s : ${scans}" th:value="${s.scanId}" th:text="${s.realm + ' (' + s.detected + ' det.)'}"></option>
+                                </select>
+                                <button type="submit" class="btn-action" style="white-space:nowrap">Apply</button>
+                            </form>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>

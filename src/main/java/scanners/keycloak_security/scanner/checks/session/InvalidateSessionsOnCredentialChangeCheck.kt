@@ -58,6 +58,42 @@ class InvalidateSessionsOnCredentialChangeCheck : SecurityCheck {
                 )
             }
 
+            // Проверяем per-client access token lifespan overrides
+            // Клиент может переопределить access token lifespan выше realm значения,
+            // что увеличивает окно атаки после смены credentials
+            val internalClients = setOf(
+                "account", "account-console", "admin-cli",
+                "broker", "realm-management", "security-admin-console"
+            )
+            context.adminService.getClients().forEach { client ->
+                if (client.clientId in internalClients) return@forEach
+                if (client.clientId?.endsWith("-realm") == true) return@forEach
+
+                val clientTokenLifespan = client.attributes?.get("access.token.lifespan")?.toIntOrNull()
+                if (clientTokenLifespan != null && clientTokenLifespan > 900 &&
+                    clientTokenLifespan > accessTokenLifespan) {
+                    findings += Finding(
+                        id = id(),
+                        title = "Client '${client.clientId}' переопределяет access token lifespan",
+                        description = "Клиент '${client.clientId}' имеет access.token.lifespan=" +
+                                "$clientTokenLifespan секунд (${clientTokenLifespan / 60} мин), " +
+                                "что превышает realm значение ($accessTokenLifespan сек). " +
+                                "При смене пароля этот токен будет валиден дольше остальных.",
+                        severity = Severity.MEDIUM,
+                        status = CheckStatus.DETECTED,
+                        realm = context.realmName,
+                        clientId = client.clientId,
+                        evidence = listOf(
+                            Evidence("clientId", client.clientId),
+                            Evidence("clientAccessTokenLifespan", clientTokenLifespan),
+                            Evidence("realmAccessTokenLifespan", accessTokenLifespan)
+                        ),
+                        recommendation = "Удалите переопределение access.token.lifespan для клиента " +
+                                "или установите значение ≤ realm lifespan"
+                    )
+                }
+            }
+
         } catch (e: Exception) {
             return SecurityCheckHelper.createErrorResult(id(), title(), e, start, context.realmName)
         }

@@ -210,30 +210,18 @@ class SmsOtpCheck : SecurityCheck {
                     }
                 }
             } else {
-                findings.add(
-                    Finding(
-                        id = id(),
-                        title = "SMS OTP не используется",
-                        description = "SMS-based аутентификация не настроена",
-                        severity = Severity.LOW,
-                        status = CheckStatus.OK,
-                        realm = context.realmName,
-                        evidence = listOf(
-                            Evidence("hasSmsAuth", "false"),
-                            Evidence("totalFlowsChecked", allExecutions.size.toString())
-                        ),
-                        recommendation = null
-                    )
+                // SMS не используется — это хорошо, возвращаем OK
+                return CheckResult(
+                    checkId = id(),
+                    status = CheckStatus.OK,
+                    durationMs = System.currentTimeMillis() - start
                 )
             }
 
-            val hasCriticalFindings = findings.any { it.severity >= Severity.HIGH }
-            val hasMediumFindings = findings.any { it.severity == Severity.MEDIUM }
-
             val status = when {
-                hasCriticalFindings -> CheckStatus.DETECTED
-                hasMediumFindings -> CheckStatus.DETECTED
-                findings.isNotEmpty() -> CheckStatus.WARNING
+                findings.any { it.severity >= Severity.HIGH } -> CheckStatus.DETECTED
+                findings.any { it.severity == Severity.MEDIUM } -> CheckStatus.DETECTED
+                findings.isNotEmpty() -> CheckStatus.DETECTED
                 else -> CheckStatus.OK
             }
 

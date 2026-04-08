@@ -1,105 +1,95 @@
+
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head>
-    <title>Scan Report</title>
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
-          rel="stylesheet">
-
-    <link rel="stylesheet" th:href="@{/css/app.css}">
-</head>
+<head><title>Scan Report</title><link rel="stylesheet" href="/css/app.css?v=2" th:href="@{/css/app.css?v=2}"></head>
 <body>
+<nav class="navbar">
+    <div class="navbar-logo"><div class="dot"></div>Keycloak Scanner</div>
+    <div class="navbar-links"><a href="/">Scan</a><a href="/history">History</a><a href="/diff">Diff</a><a href="/baselines">Baselines</a></div>
+</nav>
+<div class="wrap">
+    <h1>Scan Report</h1>
+    <div class="subtitle"><span th:text="${report.target}"></span> &middot; <span th:text="${report.scanId}"></span></div>
 
-<div class="container my-4">
+    <!-- Stats -->
+    <div class="stats-row">
+        <div class="stat-box"><div class="num num-white" th:text="${report.summary.totalChecks}"></div><div class="lbl">Total Checks</div></div>
+        <div class="stat-box"><div class="num num-red" th:text="${report.summary.detected}"></div><div class="lbl">Detected</div></div>
+        <div class="stat-box"><div class="num num-green" th:text="${report.summary.ok}"></div><div class="lbl">Passed</div></div>
+        <div class="stat-box"><div class="num num-yellow" th:text="${report.summary.errors}"></div><div class="lbl">Errors</div></div>
+    </div>
 
-    <div class="mb-4">
-        <h4>Scan report</h4>
-        <div class="small">
-            <span th:text="${report.target}"></span>
-            &middot;
-            <span th:text="${report.scanId}"></span>
+    <!-- Tabs -->
+    <div class="tab-bar">
+        <button class="tab-btn active" onclick="showTab('findings')">OWASP ASVS Findings</button>
+        <button class="tab-btn" onclick="showTab('attacks')">MITRE Attack Vectors</button>
+    </div>
+
+    <!-- ==================== FINDINGS ==================== -->
+    <div id="tab-findings" class="tab-panel active">
+        <div th:each="check : ${report.results}" th:if="${check.status.name() == 'DETECTED' || check.status.name() == 'ERROR'}">
+            <div class="section">
+                <div class="section-header">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span class="finding-id" th:text="${check.checkId}"></span>
+                        <span style="font-weight:600;color:#eef0f4;font-size:0.92rem" th:text="${check.findings.isEmpty()} ? check.checkId : check.findings[0].title"></span>
+                    </div>
+                    <span class="badge" th:classappend="${check.status.name() == 'DETECTED'} ? 'b-detected' : 'b-error'" th:text="${check.status}"></span>
+                </div>
+                <div class="section-body">
+                    <div th:each="finding : ${check.findings}" class="finding-item">
+                        <div class="finding-row">
+                            <div style="flex:1">
+                                <div class="finding-title" th:text="${finding.title}"></div>
+                                <div class="finding-desc" th:text="${finding.description}"></div>
+                            </div>
+                            <span class="badge" th:classappend="${finding.severity.name() == 'HIGH'} ? 'b-high' : (${finding.severity.name() == 'MEDIUM'} ? 'b-medium' : 'b-low')" th:text="${finding.severity}"></span>
+                        </div>
+                        <div class="finding-rec" th:if="${finding.recommendation}" th:text="${finding.recommendation}"></div>
+                        <details th:if="${!finding.evidence.isEmpty()}">
+                            <summary class="evidence-toggle">Show evidence</summary>
+                            <ul class="evidence-list">
+                                <li th:each="e : ${finding.evidence}"><code th:text="${e.key}"></code><span th:text="${e.value}"></span></li>
+                            </ul>
+                        </details>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="passed-block"><details><summary th:text="'Passed checks (' + ${report.summary.ok} + ')'"></summary><div class="passed-grid"><span th:each="check : ${report.results}" th:if="${check.status.name() == 'OK'}" class="passed-chip" th:text="${check.checkId}"></span></div></details></div>
+    </div>
+
+    <!-- ==================== ATTACKS ==================== -->
+    <div id="tab-attacks" class="tab-panel" th:if="${attacks != null}">
+        <div th:each="attack : ${attacks}" class="attack-item" th:classappend="${attack.status.name() == 'PARTIALLY_ENABLED'} ? 'partial' : (${attack.status.name() == 'MITIGATED'} ? 'mitigated' : '')">
+            <div class="attack-head">
+                <span class="attack-name" th:text="${attack.vector.name}"></span>
+                <span class="badge" th:classappend="${attack.status.name() == 'FULLY_ENABLED'} ? 'b-full' : (${attack.status.name() == 'PARTIALLY_ENABLED'} ? 'b-partial' : 'b-mitigated')" th:text="${attack.status.name().replace('_', ' ')}"></span>
+            </div>
+            <div class="attack-links">
+                <a th:href="'https://capec.mitre.org/data/definitions/' + ${attack.vector.capecId.replace('CAPEC-', '')} + '.html'" target="_blank" th:text="${attack.vector.capecId}"></a>
+                <span>&middot;</span>
+                <a th:href="'https://attack.mitre.org/techniques/' + ${attack.vector.attckTechnique.replace('.', '/')}" target="_blank" th:text="'ATT&CK ' + ${attack.vector.attckTechnique}"></a>
+                <span>&middot;</span>
+                <span th:text="${attack.vector.severity}"></span>
+            </div>
+            <div class="attack-desc" th:text="${attack.vector.description}"></div>
+            <div class="progress-outer"><div class="progress-inner" th:classappend="${attack.coveragePercent >= 100} ? 'red' : (${attack.coveragePercent >= 50} ? 'yellow' : 'green')" th:style="'width:' + ${attack.coveragePercent} + '%'"></div></div>
+            <div class="progress-text"><span th:text="${attack.coveragePercent}"></span>% prerequisites met (<span th:text="${attack.triggeredCheckIds.size()}"></span> of <span th:text="${attack.vector.requiredCheckIds.size()}"></span> checks triggered)</div>
+            <div class="pills"><span th:each="cid : ${attack.vector.requiredCheckIds}" class="pill" th:classappend="${attack.triggeredCheckIds.contains(cid)} ? 'pill-red' : 'pill-green'" th:text="${cid}"></span></div>
         </div>
     </div>
 
-    <div class="card mb-4 p-3">
-        <div class="row text-center">
-            <div class="col">
-                <div class="small">Total</div>
-                <div class="summary-value"
-                     th:text="${report.summary.totalChecks}"></div>
-            </div>
-            <div class="col">
-                <div class="small">Detected</div>
-                <div class="summary-value status-DETECTED"
-                     th:text="${report.summary.detected}"></div>
-            </div>
-            <div class="col">
-                <div class="small">OK</div>
-                <div class="summary-value status-OK"
-                     th:text="${report.summary.ok}"></div>
-            </div>
-            <div class="col">
-                <div class="small">Errors</div>
-                <div class="summary-value status-ERROR"
-                     th:text="${report.summary.errors}"></div>
-            </div>
-        </div>
+    <div class="actions">
+        <a href="/" class="btn-action">New Scan</a>
+        <a href="/history" class="btn-action">History</a>
+        <a th:href="@{'/api/scans/' + ${report.scanId} + '/sarif'}" class="btn-action" target="_blank">Export SARIF</a>
+        <a th:href="@{'/api/scans/' + ${report.scanId} + '/attacks'}" class="btn-action" target="_blank">Attacks JSON</a>
     </div>
-
-    <div th:each="check : ${report.results}" class="card mb-3 p-3">
-
-        <div class="check-header">
-            <span class="check-id"
-                  th:text="${check.checkId}"></span>
-
-            <span class="check-status"
-                  th:class="'check-status status-' + ${check.status}"
-                  th:text="${check.status}"></span>
-        </div>
-
-        <div th:if="${check.error}" class="mt-2 status-ERROR">
-            <pre th:text="${check.error}"></pre>
-        </div>
-
-        <div th:each="finding : ${check.findings}" class="finding">
-
-            <div class="d-flex justify-content-between mb-1">
-                <span class="finding-title"
-                      th:text="${finding.title}"></span>
-
-                <span class="badge"
-                      th:class="'severity-' + ${finding.severity}"
-                      th:text="${finding.severity}"></span>
-            </div>
-
-            <div class="finding-description mb-2"
-                 th:text="${finding.description}"></div>
-
-            <div th:if="${finding.recommendation}"
-                 class="finding-recommendation">
-                <strong>Recommendation:</strong>
-                <span th:text="${finding.recommendation}"></span>
-            </div>
-
-            <details class="mt-2">
-                <summary>Evidence</summary>
-                <ul>
-                    <li th:each="e : ${finding.evidence}">
-                        <code th:text="${e.key}"></code>
-                        =
-                        <span th:text="${e.value}"></span>
-                    </li>
-                </ul>
-            </details>
-
-        </div>
-    </div>
-
-    <a href="/" class="btn btn-secondary mt-3">
-        New scan
-    </a>
-
 </div>
-
+<script>
+function showTab(n){document.querySelectorAll('.tab-panel').forEach(function(e){e.classList.remove('active')});document.querySelectorAll('.tab-btn').forEach(function(e){e.classList.remove('active')});document.getElementById('tab-'+n).classList.add('active');event.target.classList.add('active')}
+</script>
 </body>
 </html>
