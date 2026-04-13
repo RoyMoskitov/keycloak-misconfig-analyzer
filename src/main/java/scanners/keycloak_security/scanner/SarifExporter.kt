@@ -86,7 +86,6 @@ class SarifExporter {
 
         return SarifLog(
             version = "2.1.0",
-            schema = "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/Schemata/sarif-schema-2.1.0.json",
             runs = listOf(
                 SarifRun(
                     tool = SarifTool(
@@ -113,9 +112,10 @@ class SarifExporter {
 
 // --- SARIF Data Classes ---
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 data class SarifLog(
     val version: String,
-    @JsonProperty("\$schema") val schema: String,
+    @JsonProperty("\$schema") val schema: String? = null,
     val runs: List<SarifRun>
 )
 
