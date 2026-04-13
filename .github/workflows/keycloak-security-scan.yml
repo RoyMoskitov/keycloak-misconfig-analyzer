@@ -62,7 +62,9 @@ jobs:
           cache: maven
 
       - name: Build scanner
-        run: ./mvnw package -DskipTests -B -q
+        run: |
+          chmod +x mvnw
+          ./mvnw package -DskipTests -B -q
 
       - name: Setup vulnerable realm
         run: |
