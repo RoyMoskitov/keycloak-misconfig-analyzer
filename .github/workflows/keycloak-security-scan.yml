@@ -74,6 +74,7 @@ jobs:
           bash test-environments/setup-vulnerable-realm.sh http://localhost:8180 admin adminpass
 
       - name: Start scanner
+        shell: bash {0}
         run: |
           nohup java -jar target/*.jar \
             --keycloak-audit.server-url=http://localhost:8180 \
@@ -86,20 +87,30 @@ jobs:
           echo $! > scanner.pid
           echo "Scanner PID: $(cat scanner.pid)"
 
+          sleep 5
           echo "Waiting for scanner to start..."
+          READY=false
           for i in $(seq 1 60); do
+            # Check if process is still alive
+            if ! kill -0 $(cat scanner.pid) 2>/dev/null; then
+              echo "Scanner process died! Last 30 lines of log:"
+              tail -30 scanner.log
+              exit 1
+            fi
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/scan 2>/dev/null)
             if [ "$STATUS" = "405" ] || [ "$STATUS" = "200" ]; then
-              echo "Scanner ready (HTTP $STATUS) after ${i}x2 seconds"
+              echo "Scanner ready (HTTP $STATUS) after ~$((i*2+5)) seconds"
+              READY=true
               break
-            fi
-            if [ "$i" -eq 60 ]; then
-              echo "Scanner failed to start. Logs:"
-              cat scanner.log
-              exit 1
             fi
             sleep 2
           done
+
+          if [ "$READY" != "true" ]; then
+            echo "Scanner failed to start after 125 seconds. Last 50 lines:"
+            tail -50 scanner.log
+            exit 1
+          fi
 
       - name: Run security scan
         id: scan
