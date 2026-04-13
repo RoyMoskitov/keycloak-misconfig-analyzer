@@ -69,8 +69,7 @@ class SarifExporter {
                         SarifLocation(
                             physicalLocation = SarifPhysicalLocation(
                                 artifactLocation = SarifArtifactLocation(
-                                    uri = "keycloak://${finding.realm ?: "unknown"}/${finding.clientId ?: "realm-config"}",
-                                    uriBaseId = report.target
+                                    uri = "keycloak-config/${finding.realm ?: "unknown"}/${finding.clientId ?: "realm-settings"}.json"
                                 )
                             )
                         )
