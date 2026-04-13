@@ -62,24 +62,45 @@ class DynamicSessionTokensCheck : SecurityCheck {
                     }
                 }
 
-                // Bearer-only клиент без аутентификации — потенциально использует внешние статические токены
-                if (client.isBearerOnly == true && client.isServiceAccountsEnabled != true) {
-                    val hasNoFlows = client.isStandardFlowEnabled != true
-                            && client.isDirectAccessGrantsEnabled != true
-                    if (hasNoFlows) {
+                // Service account + client-secret = фактически статический API ключ
+                if (client.isServiceAccountsEnabled == true) {
+                    val authMethod = client.clientAuthenticatorType ?: "client-secret"
+                    if (authMethod in listOf("client-secret", "client-secret-post")) {
                         findings += Finding(
                             id = id(),
-                            title = "Bearer-only клиент без потоков аутентификации",
-                            description = "Client '$clientId' настроен как bearer-only без стандартных потоков. " +
-                                    "Убедитесь, что он получает токены динамически от другого клиента.",
-                            severity = Severity.LOW,
+                            title = "Service account со статическим секретом",
+                            description = "Client '$clientId' использует client_credentials grant с методом '$authMethod'. " +
+                                    "Статический client_secret фактически является API-ключом — " +
+                                    "он не меняется, не истекает и может быть скомпрометирован.",
+                            severity = Severity.MEDIUM,
                             status = CheckStatus.DETECTED,
                             realm = context.realmName,
                             clientId = clientId,
-                            evidence = listOf(Evidence("clientId", clientId), Evidence("bearerOnly", true)),
-                            recommendation = "Проверьте, что bearer-only клиент валидирует динамические JWT, а не статические ключи"
+                            evidence = listOf(
+                                Evidence("clientId", clientId),
+                                Evidence("clientAuthenticatorType", authMethod),
+                                Evidence("serviceAccountsEnabled", true)
+                            ),
+                            recommendation = "Используйте 'private_key_jwt' или 'client-x509' для динамической аутентификации, " +
+                                    "либо внедрите ротацию client_secret"
                         )
                     }
+                }
+
+                // Bearer-only — deprecated в KC, модель статического доверия
+                if (client.isBearerOnly == true) {
+                    findings += Finding(
+                        id = id(),
+                        title = "Bearer-only клиент (deprecated)",
+                        description = "Client '$clientId' использует deprecated режим bearer-only. " +
+                                "Bearer-only подразумевает статическую конфигурацию доверия без динамического обмена токенами.",
+                        severity = Severity.LOW,
+                        status = CheckStatus.DETECTED,
+                        realm = context.realmName,
+                        clientId = clientId,
+                        evidence = listOf(Evidence("clientId", clientId), Evidence("bearerOnly", true)),
+                        recommendation = "Мигрируйте на стандартный confidential клиент с service account"
+                    )
                 }
             }
         } catch (e: Exception) {

@@ -21,10 +21,20 @@ class KeycloakAdminService(
 ) {
     private val logger = LoggerFactory.getLogger(KeycloakAdminService::class.java)
 
+    @Volatile
+    private var cachedClient: org.keycloak.admin.client.Keycloak? = null
+    @Volatile
+    private var cachedClientKey: String? = null
+
     private fun buildClient(): org.keycloak.admin.client.Keycloak {
-        // realm в builder — это realm для АУТЕНТИФИКАЦИИ (получения токена).
-        // authRealm позволяет явно указать realm аутентификации.
-        // По умолчанию: password grant → master, client_credentials → целевой realm.
+        val key = "${props.serverUrl}|${props.realm}|${props.clientId}|${props.username}|${props.grantType}|${props.authRealm}"
+        val existing = cachedClient
+        if (existing != null && cachedClientKey == key) {
+            return existing
+        }
+
+        existing?.close()
+
         val authRealm = props.authRealm.ifBlank {
             if (props.grantType == "client_credentials") props.realm else "master"
         }
@@ -34,7 +44,7 @@ class KeycloakAdminService(
             .realm(authRealm)
             .clientId(props.clientId)
 
-        return if (props.grantType == "client_credentials") {
+        val client = if (props.grantType == "client_credentials") {
             builder
                 .grantType(org.keycloak.OAuth2Constants.CLIENT_CREDENTIALS)
                 .clientSecret(props.clientSecret)
@@ -45,6 +55,16 @@ class KeycloakAdminService(
                 .password(props.password)
                 .build()
         }
+
+        cachedClient = client
+        cachedClientKey = key
+        return client
+    }
+
+    fun invalidateClient() {
+        cachedClient?.close()
+        cachedClient = null
+        cachedClientKey = null
     }
 
     fun realmResource() = buildClient().realm(props.realm)
@@ -257,5 +277,32 @@ class KeycloakAdminService(
 
     fun getClientScope(realmId: String, scopeId: String): ClientScopeRepresentation {
         return buildClient().realm(realmId).clientScopes().get(scopeId).toRepresentation()
+    }
+
+    fun getClientResourceById(clientUuid: String): org.keycloak.admin.client.resource.ClientResource? {
+        return try {
+            realmResource().clients().get(clientUuid)
+        } catch (e: Exception) {
+            logger.error("Ошибка при получении client resource $clientUuid: ${e.message}")
+            null
+        }
+    }
+
+    fun getRealmRoles(): List<org.keycloak.representations.idm.RoleRepresentation> {
+        return try {
+            realmResource().roles().list()
+        } catch (e: Exception) {
+            logger.error("Ошибка при получении realm roles: ${e.message}")
+            emptyList()
+        }
+    }
+
+    fun getDefaultRoleComposites(defaultRoleId: String): List<org.keycloak.representations.idm.RoleRepresentation> {
+        return try {
+            realmResource().rolesById().getRoleComposites(defaultRoleId).toList()
+        } catch (e: Exception) {
+            logger.error("Ошибка при получении composites для default role: ${e.message}")
+            emptyList()
+        }
     }
 }

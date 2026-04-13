@@ -13,17 +13,17 @@ object SecurityCheckHelper {
     ): CheckResult {
         findings.forEach { it.realm = realmName }
 
+        val detectedFindings = findings.filter { it.status == CheckStatus.DETECTED }
+
         val status = when {
-            findings.any { it.severity >= Severity.HIGH } -> CheckStatus.DETECTED
-            findings.isNotEmpty() -> CheckStatus.DETECTED
+            detectedFindings.any { it.severity >= Severity.HIGH } -> CheckStatus.DETECTED
+            detectedFindings.isNotEmpty() -> CheckStatus.DETECTED
+            findings.any { it.status == CheckStatus.WARNING } -> CheckStatus.WARNING
+            findings.any { it.status == CheckStatus.INFO } -> CheckStatus.INFO
             else -> CheckStatus.OK
         }
 
-        val finalFindings = if (status == CheckStatus.OK) {
-            listOf()
-        } else {
-            findings
-        }
+        val finalFindings = findings
 
         return CheckResult(
             checkId = checkId,

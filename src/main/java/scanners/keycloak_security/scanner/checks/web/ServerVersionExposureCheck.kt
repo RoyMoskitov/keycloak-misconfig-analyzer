@@ -80,7 +80,7 @@ class ServerVersionExposureCheck : SecurityCheck {
             }
         }
 
-        // 3. Проверяем доступность admin console
+        // 3. Проверяем доступность admin console без аутентификации
         try {
             val adminUrl = "$baseUrl/admin/master/console/"
             val conn = URL(adminUrl).openConnection() as HttpURLConnection
@@ -91,8 +91,25 @@ class ServerVersionExposureCheck : SecurityCheck {
             conn.connect()
 
             if (conn.responseCode == 200) {
+                // Admin console доступна публично — раскрывает платформу
+                findings += Finding(
+                    id = id(),
+                    title = "Admin Console доступна публично",
+                    description = "Keycloak Admin Console ($adminUrl) доступна без IP-ограничений. " +
+                            "Это раскрывает: платформу (Keycloak), приблизительную версию (по UI), " +
+                            "и предоставляет точку входа для brute-force атак на admin-аккаунт.",
+                    severity = Severity.MEDIUM,
+                    status = CheckStatus.DETECTED,
+                    realm = context.realmName,
+                    evidence = listOf(
+                        Evidence("adminConsoleUrl", adminUrl),
+                        Evidence("httpStatus", 200),
+                        Evidence("publiclyAccessible", true)
+                    ),
+                    recommendation = "Ограничьте доступ к /admin/* по IP через reverse proxy или VPN"
+                )
+
                 val body = conn.inputStream.bufferedReader().use { it.readText() }
-                // Keycloak admin console HTML часто содержит версию
                 val versionRegex = Regex("Keycloak[\\s-]*v?([\\d]+\\.[\\d]+\\.[\\d]+)")
                 val match = versionRegex.find(body)
                 if (match != null) {

@@ -61,7 +61,7 @@ class PasswordHashAlgorithmCheck : SecurityCheck {
                             "но Argon2id обеспечивает лучшую защиту от GPU-атак благодаря " +
                             "memory-hard свойству.",
                     severity = Severity.LOW,
-                    status = CheckStatus.DETECTED,
+                    status = CheckStatus.WARNING,
                     realm = context.realmName,
                     evidence = listOf(
                         Evidence("hashAlgorithm", effectiveAlgorithm),

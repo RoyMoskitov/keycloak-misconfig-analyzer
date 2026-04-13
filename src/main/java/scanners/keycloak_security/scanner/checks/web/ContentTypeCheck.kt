@@ -47,13 +47,32 @@ class ContentTypeCheck : SecurityCheck {
                     findings.add(
                         Finding(
                             id = id(),
-                            title = title(),
-                            description = "Неверный Content-Type для $endpoint: $contentType, ожидается $expected",
+                            title = "Неверный Content-Type для $endpoint",
+                            description = "Content-Type: $contentType, ожидается $expected",
                             severity = severity(),
                             status = CheckStatus.DETECTED,
                             realm = context.realmName,
                             evidence = listOf(Evidence("Content-Type", contentType ?: "null")),
                             recommendation = "Проверьте конфигурацию тем или сервера для корректного Content-Type"
+                        )
+                    )
+                } else if (contentType != null && !contentType.contains("charset", ignoreCase = true)) {
+                    // ASVS 4.1.1 требует charset parameter
+                    findings.add(
+                        Finding(
+                            id = id(),
+                            title = "Отсутствует charset в Content-Type",
+                            description = "Endpoint $endpoint возвращает Content-Type '$contentType' без charset. " +
+                                    "ASVS V4.1.1 требует указание charset (например UTF-8) для предотвращения " +
+                                    "XSS через интерпретацию encoding.",
+                            severity = Severity.LOW,
+                            status = CheckStatus.DETECTED,
+                            realm = context.realmName,
+                            evidence = listOf(
+                                Evidence("endpoint", endpoint),
+                                Evidence("Content-Type", contentType)
+                            ),
+                            recommendation = "Настройте charset=UTF-8 в Content-Type для всех endpoints"
                         )
                     )
                 }

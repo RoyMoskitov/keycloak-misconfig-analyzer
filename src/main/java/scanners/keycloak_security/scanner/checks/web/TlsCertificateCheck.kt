@@ -27,9 +27,18 @@ class TlsCertificateCheck : SecurityCheck {
 
         val url = URI(context.adminService.props.serverUrl)
 
-        // Проверка применима только к HTTPS
         if (url.scheme != "https") {
-            // HTTP — не наша проверка, это HttpsOnlyCheck (12.2.1)
+            findings += Finding(
+                id = id(),
+                title = "TLS не используется — проверка сертификата невозможна",
+                description = "Keycloak доступен по HTTP (${url}). TLS сертификат отсутствует, " +
+                        "клиенты не могут верифицировать подлинность сервера.",
+                severity = Severity.HIGH,
+                status = CheckStatus.DETECTED,
+                realm = context.realmName,
+                evidence = listOf(Evidence("scheme", url.scheme), Evidence("serverUrl", url.toString())),
+                recommendation = "Настройте HTTPS с публично доверенным TLS сертификатом."
+            )
             return SecurityCheckHelper.buildCheckResult(id(), title(), findings, start, context.realmName)
         }
 

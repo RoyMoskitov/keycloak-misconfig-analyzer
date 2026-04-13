@@ -15,6 +15,12 @@ class JwtSignaturePresenceCheck : SecurityCheck {
         "Проверка, что self-contained токены подписываются и не используют alg=none"
     override fun severity() = Severity.HIGH
 
+    companion object {
+        val SYMMETRIC_ALGORITHMS = setOf(
+            "HS256", "HS384", "HS512"
+        )
+    }
+
     override fun run(context: CheckContext): CheckResult {
         val start = System.currentTimeMillis()
         val findings = mutableListOf<Finding>()
@@ -48,6 +54,38 @@ class JwtSignaturePresenceCheck : SecurityCheck {
                     recommendation =
                         "Запретите использование алгоритма 'none'. Используйте RS256 или ES256."
                 )
+            }
+
+            // Проверяем per-client override алгоритма подписи
+            val clients = context.adminService.getClients()
+            val internalClients = setOf(
+                "account", "account-console", "admin-cli",
+                "broker", "realm-management", "security-admin-console"
+            )
+            clients.forEach { client ->
+                if (client.clientId in internalClients) return@forEach
+                if (client.clientId?.endsWith("-realm") == true) return@forEach
+
+                val attrs = client.attributes ?: emptyMap()
+                val clientAlg = attrs["access.token.signed.response.alg"] ?: ""
+                if (clientAlg.uppercase() in SYMMETRIC_ALGORITHMS) {
+                    findings += Finding(
+                        id(),
+                        "Клиент '${client.clientId}' использует симметричную подпись токенов",
+                        "Клиент '${client.clientId}' переопределяет алгоритм подписи на '$clientAlg'. " +
+                                "Симметричный алгоритм (HMAC) означает, что любой, кто знает shared secret, " +
+                                "может подделать access token.",
+                        Severity.MEDIUM,
+                        CheckStatus.DETECTED,
+                        context.realmName,
+                        clientId = client.clientId,
+                        evidence = listOf(
+                            Evidence("clientId", client.clientId),
+                            Evidence("access.token.signed.response.alg", clientAlg)
+                        ),
+                        recommendation = "Используйте асимметричный алгоритм (RS256, ES256) для подписи токенов"
+                    )
+                }
             }
 
             CheckResult(

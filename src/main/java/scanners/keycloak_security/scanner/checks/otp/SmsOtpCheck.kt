@@ -210,12 +210,32 @@ class SmsOtpCheck : SecurityCheck {
                     }
                 }
             } else {
-                // SMS не используется — это хорошо, возвращаем OK
-                return CheckResult(
-                    checkId = id(),
-                    status = CheckStatus.OK,
-                    durationMs = System.currentTimeMillis() - start
-                )
+                // SMS не используется — проверяем есть ли хоть КАКОЙ-ТО second factor
+                val hasMfa = allExecutions.values.flatten().any { execution ->
+                    execution.providerId in listOf(
+                        "auth-otp-form", "direct-grant-validate-otp",
+                        "webauthn-authenticator", "webauthn-authenticator-passwordless"
+                    ) && execution.requirement in listOf("REQUIRED", "ALTERNATIVE", "CONDITIONAL")
+                }
+
+                if (!hasMfa) {
+                    findings.add(Finding(
+                        id = id(),
+                        title = "Нет ни одного механизма MFA",
+                        description = "В realm не настроен ни SMS OTP, ни TOTP, ни WebAuthn. " +
+                                "ASVS V6.6.1 требует наличие сильных альтернатив SMS. " +
+                                "Отсутствие любого второго фактора — критическая проблема.",
+                        severity = Severity.HIGH,
+                        status = CheckStatus.DETECTED,
+                        realm = context.realmName,
+                        evidence = listOf(
+                            Evidence("hasSmsOtp", false),
+                            Evidence("hasTotp", false),
+                            Evidence("hasWebAuthn", false)
+                        ),
+                        recommendation = "Настройте TOTP или WebAuthn как обязательный второй фактор аутентификации"
+                    ))
+                }
             }
 
             val status = when {

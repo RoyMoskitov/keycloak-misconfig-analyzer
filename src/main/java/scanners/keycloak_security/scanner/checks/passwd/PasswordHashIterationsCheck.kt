@@ -8,9 +8,9 @@ import scanners.keycloak_security.scanner.SecurityCheckHelper
 @Component
 class PasswordHashIterationsCheck : SecurityCheck {
 
-    override fun id() = "KC-PASS-05"
-    override fun title() = "Итерации хеширования пароля"
-    override fun description() = "Проверка достаточного количества итераций хеширования с учётом алгоритма"
+    override fun id() = "11.4.3"
+    override fun title() = "Work factor хеширования пароля"
+    override fun description() = "Проверка достаточного количества итераций хеширования с учётом алгоритма (ASVS 11.4.3)"
     override fun severity() = Severity.MEDIUM
 
     companion object {

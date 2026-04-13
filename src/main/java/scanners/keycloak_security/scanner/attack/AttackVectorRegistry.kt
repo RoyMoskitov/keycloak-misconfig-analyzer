@@ -2,6 +2,7 @@ package scanners.keycloak_security.scanner.attack
 
 /**
  * Статический реестр из 20 CAPEC атак, релевантных для Keycloak.
+ * Атаки отобраны из CAPEC-658 (ATT&CK Related Patterns).
  *
  * Каждая атака содержит набор check IDs, findings по которым
  * являются prerequisites данной атаки. Если все (или большинство)
@@ -23,9 +24,10 @@ object AttackVectorRegistry {
             severity = AttackSeverity.HIGH,
             prerequisites = listOf(
                 "Brute force protection отключена",
-                "Слабая парольная политика (короткие пароли)"
+                "Слабая парольная политика (короткие пароли)",
+                "Возможно перечисление пользователей"
             ),
-            requiredCheckIds = setOf("6.3.1", "6.2.1", "6.6.3")
+            requiredCheckIds = setOf("6.3.1", "6.2.1", "6.6.3", "6.3.8")
         ),
 
         AttackVector(
@@ -33,30 +35,34 @@ object AttackVectorRegistry {
             name = "Credential Stuffing",
             description = "Использование утёкших пар логин/пароль из других сервисов. " +
                     "Без проверки паролей против баз утечек и без MFA атакующий " +
-                    "может получить доступ к аккаунтам с повторно используемыми паролями.",
+                    "может получить доступ к аккаунтам с повторно используемыми паролями. " +
+                    "Отсутствие уведомлений позволяет атаке оставаться незамеченной.",
             attckTechnique = "T1110.004",
             severity = AttackSeverity.HIGH,
             prerequisites = listOf(
                 "Нет brute force protection",
                 "Нет blacklist паролей",
-                "Нет MFA"
+                "Нет MFA",
+                "Нет уведомлений об изменениях credentials"
             ),
-            requiredCheckIds = setOf("6.3.1", "6.1.2", "6.3.3")
+            requiredCheckIds = setOf("6.3.1", "6.1.2", "6.3.3", "6.3.7")
         ),
 
         AttackVector(
             capecId = "CAPEC-565",
             name = "Password Spraying",
             description = "Попытка одного распространённого пароля для множества аккаунтов. " +
-                    "Наличие стандартных аккаунтов и отсутствие blacklist делает атаку эффективной.",
+                    "Наличие стандартных аккаунтов, отсутствие blacklist и возможность " +
+                    "перечисления пользователей делает атаку эффективной.",
             attckTechnique = "T1110.003",
             severity = AttackSeverity.HIGH,
             prerequisites = listOf(
                 "Стандартные аккаунты активны",
                 "Нет blacklist паролей",
-                "Нет brute force protection"
+                "Нет brute force protection",
+                "Возможно перечисление пользователей"
             ),
-            requiredCheckIds = setOf("6.3.2", "6.1.2", "6.3.1")
+            requiredCheckIds = setOf("6.3.2", "6.1.2", "6.3.1", "6.3.8")
         ),
 
         AttackVector(
@@ -71,14 +77,14 @@ object AttackVectorRegistry {
                 "Слабый алгоритм хеширования",
                 "Недостаточно итераций хеширования"
             ),
-            requiredCheckIds = setOf("11.4.2", "KC-PASS-05")
+            requiredCheckIds = setOf("11.4.2", "11.4.3")
         ),
 
         AttackVector(
             capecId = "CAPEC-70",
-            name = "Default Credentials",
+            name = "Try Common or Default Usernames and Passwords",
             description = "Попытка входа с дефолтными credentials (admin/admin). " +
-                    "Стандартные аккаунты с предсказуемыми паролями — простейший вектор входа.",
+                    "Стандартные аккаунты с предсказуемыми паролями -- простейший вектор входа.",
             attckTechnique = "T1078.001",
             severity = AttackSeverity.CRITICAL,
             prerequisites = listOf(
@@ -92,9 +98,11 @@ object AttackVectorRegistry {
 
         AttackVector(
             capecId = "CAPEC-115",
-            name = "Authentication Bypass via Password Reset",
-            description = "Обход MFA через процесс сброса пароля. Если reset flow не требует MFA, " +
-                    "атакующий с доступом к email жертвы может войти без второго фактора.",
+            name = "Authentication Bypass",
+            description = "Обход механизмов аутентификации через альтернативные пути. " +
+                    "В контексте Keycloak: обход MFA через процесс сброса пароля " +
+                    "(reset flow не требует MFA), несогласованность authentication pathways, " +
+                    "или использование Direct Access Grants минуя browser flow.",
             attckTechnique = "T1548",
             severity = AttackSeverity.CRITICAL,
             prerequisites = listOf(
@@ -106,7 +114,7 @@ object AttackVectorRegistry {
 
         AttackVector(
             capecId = "CAPEC-2",
-            name = "Account Lockout DoS",
+            name = "Inducing Account Lockout",
             description = "Намеренная блокировка аккаунтов жертв через неудачные попытки входа. " +
                     "При включённой перманентной блокировке атакующий может заблокировать " +
                     "любой аккаунт, зная только username.",
@@ -124,60 +132,72 @@ object AttackVectorRegistry {
             capecId = "CAPEC-593",
             name = "Session Hijacking",
             description = "Перехват или кража активной сессии пользователя через " +
-                    "сетевой сниффинг, XSS, или физический доступ к устройству.",
+                    "сетевой сниффинг, XSS, или физический доступ к устройству. " +
+                    "Долгоживущие токены увеличивают окно атаки.",
             attckTechnique = "T1185",
             severity = AttackSeverity.HIGH,
             prerequisites = listOf(
                 "Cookies без Secure/HttpOnly",
                 "Нет TLS",
-                "Долгие сессии без таймаута"
+                "Долгие сессии без таймаута",
+                "Долгоживущие per-client access tokens"
             ),
-            requiredCheckIds = setOf("3.3.1", "3.3.4", "7.3.1", "12.2.1")
+            requiredCheckIds = setOf("3.3.1", "3.3.4", "7.3.1", "12.2.1", "9.2.1")
         ),
 
         AttackVector(
             capecId = "CAPEC-60",
-            name = "Session Replay / Refresh Token Replay",
-            description = "Повторное использование перехваченного refresh token. " +
-                    "Без ротации и отзыва старый токен остаётся валидным бессрочно.",
+            name = "Reusing Session IDs (Session Replay)",
+            description = "Повторное использование перехваченного refresh token или session ID. " +
+                    "Без ротации и отзыва старый токен остаётся валидным бессрочно. " +
+                    "Service accounts со статическими client secrets фактически используют " +
+                    "статические credentials, которые можно переиспользовать неограниченно.",
             attckTechnique = "T1550",
             severity = AttackSeverity.HIGH,
             prerequisites = listOf(
                 "Нет ротации refresh tokens",
-                "Нет абсолютного срока жизни сессии"
+                "Нет абсолютного срока жизни сессии",
+                "Статические client secrets для service accounts"
             ),
-            requiredCheckIds = setOf("7.2.4", "10.4.8", "7.3.1")
+            requiredCheckIds = setOf("7.2.4", "10.4.8", "7.3.1", "7.2.2")
         ),
 
         // === Token Attacks ===
 
         AttackVector(
             capecId = "CAPEC-196",
-            name = "JWT Token Forgery",
-            description = "Подделка JWT токена путём использования alg=none, " +
-                    "слабых ключей подписи или кражи ключевого материала.",
+            name = "Session Credential Falsification through Forging",
+            description = "Подделка session credential (JWT токена) путём использования alg=none, " +
+                    "симметричных алгоритмов подписи (shared secret) или слабых ключей. " +
+                    "Confidential клиенты со слабой аутентификацией (client-secret) " +
+                    "увеличивают риск утечки ключевого материала.",
             attckTechnique = "T1606",
             severity = AttackSeverity.CRITICAL,
             prerequisites = listOf(
-                "alg=none разрешён или слабые алгоритмы",
+                "alg=none разрешён или симметричные алгоритмы",
                 "Слабые ключи подписи",
-                "Ненадёжные источники ключей"
+                "Ненадёжные источники ключей",
+                "Слабая аутентификация confidential клиентов"
             ),
-            requiredCheckIds = setOf("9.1.1", "9.1.2", "11.2.3", "9.1.3")
+            requiredCheckIds = setOf("9.1.1", "9.1.2", "11.2.3", "9.1.3", "10.4.10")
         ),
 
         AttackVector(
             capecId = "CAPEC-633",
-            name = "Token Cross-Service Abuse",
-            description = "Использование токена, выданного одному сервису, для доступа к другому. " +
-                    "Без audience restriction и с fullScopeAllowed токен содержит роли всех клиентов.",
+            name = "Token Impersonation",
+            description = "Использование токена для имперсонации другого сервиса или пользователя. " +
+                    "Без audience restriction токен, выданный одному сервису, принимается другим. " +
+                    "С fullScopeAllowed токен содержит роли всех клиентов. " +
+                    "Дублирование authorization claims в ID Token и Access Token " +
+                    "позволяет использовать ID Token для авторизации.",
             attckTechnique = "T1134",
             severity = AttackSeverity.HIGH,
             prerequisites = listOf(
                 "Нет audience restriction",
-                "fullScopeAllowed включён"
+                "fullScopeAllowed включён",
+                "Token type confusion (authz claims в ID Token)"
             ),
-            requiredCheckIds = setOf("9.2.4", "8.4.1")
+            requiredCheckIds = setOf("9.2.4", "8.4.1", "9.2.3", "9.2.2")
         ),
 
         // === Network / Transport Attacks ===
@@ -201,7 +221,7 @@ object AttackVectorRegistry {
 
         AttackVector(
             capecId = "CAPEC-620",
-            name = "TLS Downgrade Attack",
+            name = "Drop Encryption Level",
             description = "Принуждение использовать слабое шифрование (TLS 1.0/1.1) " +
                     "или plaintext HTTP для перехвата данных.",
             attckTechnique = "T1562.010",
@@ -218,9 +238,11 @@ object AttackVectorRegistry {
 
         AttackVector(
             capecId = "CAPEC-21",
-            name = "OAuth Authorization Code Interception",
-            description = "Перехват authorization code через отсутствие PKCE, " +
-                    "использование Implicit flow или долгоживущий code.",
+            name = "Exploitation of Trusted Identifiers",
+            description = "Эксплуатация доверенных идентификаторов (authorization code, tokens) " +
+                    "через их перехват или повторное использование. В контексте OAuth: " +
+                    "перехват authorization code при отсутствии PKCE, через Implicit Flow " +
+                    "или при долгоживущем code.",
             attckTechnique = "T1134",
             severity = AttackSeverity.HIGH,
             prerequisites = listOf(
@@ -233,9 +255,11 @@ object AttackVectorRegistry {
 
         AttackVector(
             capecId = "CAPEC-98",
-            name = "OAuth Phishing via Open Redirect",
-            description = "Перенаправление пользователя на вредоносный сайт через wildcard redirect URIs. " +
-                    "Атакующий регистрирует redirect на свой сервер и получает authorization code.",
+            name = "Phishing",
+            description = "Перенаправление пользователя на вредоносный сайт для кражи credentials. " +
+                    "В контексте Keycloak: wildcard redirect URIs позволяют атакующему " +
+                    "перенаправить authorization response на свой сервер, а отсутствие " +
+                    "consent скрывает факт передачи данных стороннему приложению.",
             attckTechnique = "T1566",
             severity = AttackSeverity.CRITICAL,
             prerequisites = listOf(
@@ -250,23 +274,26 @@ object AttackVectorRegistry {
 
         AttackVector(
             capecId = "CAPEC-180",
-            name = "Privilege Escalation via Excessive Scopes",
+            name = "Exploiting Incorrectly Configured Access Control Security Levels",
             description = "Получение избыточных привилегий через неправильно настроенные " +
-                    "scopes и роли. fullScopeAllowed включает все роли в токен.",
+                    "уровни доступа. fullScopeAllowed включает все роли в токен, " +
+                    "избыточные default scopes расширяют привилегии по умолчанию, " +
+                    "а привилегированные default realm roles дают admin-доступ каждому новому пользователю.",
             attckTechnique = "T1574",
             severity = AttackSeverity.HIGH,
             prerequisites = listOf(
                 "fullScopeAllowed включён",
                 "Избыточные default scopes",
-                "Нет consent для запроса scopes"
+                "Нет consent для запроса scopes",
+                "Привилегированные default realm roles"
             ),
-            requiredCheckIds = setOf("8.4.1", "10.4.11", "10.7.1")
+            requiredCheckIds = setOf("8.4.1", "10.4.11", "10.7.1", "8.2.1")
         ),
 
         AttackVector(
             capecId = "CAPEC-1",
-            name = "Unauthorized API Access via Misconfigured Grants",
-            description = "Доступ к API через несанкционированные grant types. " +
+            name = "Accessing Functionality Not Properly Constrained by ACLs",
+            description = "Доступ к функциям API через несанкционированные grant types. " +
                     "Direct Access Grants на public clients позволяют получить токен, " +
                     "минуя стандартный browser-based flow.",
             attckTechnique = "T1078",
@@ -282,9 +309,9 @@ object AttackVectorRegistry {
 
         AttackVector(
             capecId = "CAPEC-31",
-            name = "Cookie Theft via XSS/Network",
-            description = "Кража session cookies через XSS (без HttpOnly) " +
-                    "или сетевой перехват (без Secure). SameSite=None разрешает cross-site отправку.",
+            name = "Accessing/Intercepting/Modifying HTTP Cookies",
+            description = "Кража или модификация session cookies через XSS (без HttpOnly), " +
+                    "сетевой перехват (без Secure) или cross-site запросы (SameSite=None).",
             attckTechnique = "T1539",
             severity = AttackSeverity.HIGH,
             prerequisites = listOf(
@@ -297,7 +324,7 @@ object AttackVectorRegistry {
 
         AttackVector(
             capecId = "CAPEC-204",
-            name = "Sensitive Data from Cache",
+            name = "Lifting Sensitive Data Embedded in Cache",
             description = "Извлечение токенов и данных аутентификации из кеша " +
                     "браузера или прокси-сервера.",
             attckTechnique = "T1005",
@@ -312,15 +339,17 @@ object AttackVectorRegistry {
 
         AttackVector(
             capecId = "CAPEC-541",
-            name = "Keycloak Fingerprinting",
-            description = "Определение версии Keycloak для поиска известных CVE. " +
-                    "Информация о версии в headers и admin console помогает атакующему.",
+            name = "Application Fingerprinting",
+            description = "Определение платформы и версии Keycloak для поиска известных CVE. " +
+                    "Информация о версии в headers, admin console и внутренних endpoints " +
+                    "помогает атакующему спланировать целевую атаку.",
             attckTechnique = "T1592",
             severity = AttackSeverity.LOW,
             prerequisites = listOf(
-                "Версия раскрывается в headers или admin console"
+                "Версия раскрывается в headers или admin console",
+                "Health/metrics endpoints публично доступны"
             ),
-            requiredCheckIds = setOf("13.4.6")
+            requiredCheckIds = setOf("13.4.6", "13.4.5")
         )
     )
 }

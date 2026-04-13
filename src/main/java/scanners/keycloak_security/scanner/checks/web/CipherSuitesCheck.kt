@@ -41,6 +41,17 @@ class CipherSuitesCheck : SecurityCheck {
 
         val url = URI(context.adminService.props.serverUrl)
         if (url.scheme != "https") {
+            findings += Finding(
+                id = id(),
+                title = "TLS не используется — проверка cipher suites невозможна",
+                description = "Keycloak доступен по HTTP (${url}). Без TLS cipher suites неприменимы, " +
+                        "а весь трафик (включая токены и пароли) передаётся в открытом виде.",
+                severity = Severity.HIGH,
+                status = CheckStatus.DETECTED,
+                realm = context.realmName,
+                evidence = listOf(Evidence("scheme", url.scheme), Evidence("serverUrl", url.toString())),
+                recommendation = "Настройте HTTPS для Keycloak. Без TLS все данные передаются незащищённо."
+            )
             return SecurityCheckHelper.buildCheckResult(id(), title(), findings, start, context.realmName)
         }
 

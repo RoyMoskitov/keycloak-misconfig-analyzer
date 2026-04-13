@@ -116,8 +116,12 @@ class MultiTenantIsolationCheck : SecurityCheck {
             // 4. Проверяем, что клиенты не имеют доступа к ролям других клиентов
             //    (cross-client role leakage = потенциальная cross-tenant проблема)
             clients.forEach { client ->
+                val systemClients = setOf(
+                    "admin-cli", "realm-management", "security-admin-console",
+                    "account", "account-console", "broker"
+                )
                 if (client.isFullScopeAllowed == true &&
-                    client.clientId !in setOf("admin-cli", "realm-management", "security-admin-console")) {
+                    client.clientId !in systemClients) {
                     findings += Finding(
                         id = id(),
                         title = "Full Scope Allowed для '${client.clientId}'",

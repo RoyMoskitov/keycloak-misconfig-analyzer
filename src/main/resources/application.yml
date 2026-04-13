@@ -1,6 +1,6 @@
 keycloak-audit:
   server-url: http://localhost:8180
-  realm: master
+  realm: vulnerable-test
   client-id: admin-cli
   username: admin
   password: adminpass

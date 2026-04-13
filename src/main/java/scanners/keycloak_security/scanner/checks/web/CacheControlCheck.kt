@@ -88,7 +88,12 @@ class CacheControlCheck : SecurityCheck {
             conn.instanceFollowRedirects = false
             conn.setRequestProperty("Authorization", "Bearer $token")
 
-            conn.responseCode // trigger response processing
+            val status = conn.responseCode
+
+            // UserInfo недоступен для service accounts (client_credentials без openid scope) —
+            // это корректное поведение по спецификации OIDC, не проблема безопасности
+            if (status == 403 || status == 401) return
+
             evaluateHeaders(conn, "UserInfo endpoint", path, Severity.LOW, context, findings)
         } catch (_: Exception) {}
     }

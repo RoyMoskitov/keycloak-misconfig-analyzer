@@ -1,0 +1,154 @@
+name: Keycloak Security Scan (DAST)
+
+on:
+  # Запуск вручную с параметрами
+  workflow_dispatch:
+    inputs:
+      keycloak_url:
+        description: 'Keycloak URL (e.g. http://keycloak:8080)'
+        required: false
+        default: 'http://keycloak:8080'
+      realm:
+        description: 'Realm to scan'
+        required: false
+        default: 'master'
+      max_detected:
+        description: 'Max allowed DETECTED findings (pipeline fails if exceeded)'
+        required: false
+        default: '0'
+  # Запуск при push в main (сканирует тестовый KC)
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  security-scan:
+    name: Keycloak DAST Scan
+    runs-on: ubuntu-latest
+
+    services:
+      # Keycloak поднимается как service container
+      keycloak:
+        image: quay.io/keycloak/keycloak:26.0.7
+        env:
+          KEYCLOAK_ADMIN: admin
+          KEYCLOAK_ADMIN_PASSWORD: adminpass
+          KC_HEALTH_ENABLED: "true"
+          KC_METRICS_ENABLED: "true"
+        ports:
+          - 8180:8080
+          - 9000:9000
+        options: >-
+          --health-cmd "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '200 OK'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 60s
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build scanner
+        run: ./mvnw package -DskipTests -B -q
+
+      - name: Wait for Keycloak
+        run: |
+          echo "Waiting for Keycloak to be ready..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8180/realms/master > /dev/null 2>&1; then
+              echo "Keycloak ready after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Setup vulnerable realm
+        run: |
+          bash test-environments/setup-vulnerable-realm.sh http://localhost:8180 admin adminpass
+
+      - name: Run security scan
+        id: scan
+        run: |
+          # Запускаем сканер в фоне
+          java -jar target/*.jar \
+            --keycloak-audit.server-url=http://localhost:8180 \
+            --keycloak-audit.realm=${{ github.event.inputs.realm || 'vulnerable-test' }} \
+            --keycloak-audit.client-id=admin-cli \
+            --keycloak-audit.username=admin \
+            --keycloak-audit.password=adminpass \
+            --server.port=8080 &
+          SCANNER_PID=$!
+
+          # Ждем старта
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/api/scan > /dev/null 2>&1; then
+              echo "Scanner ready"
+              break
+            fi
+            sleep 2
+          done
+
+          # Запускаем скан и сохраняем SARIF
+          curl -sf -X POST http://localhost:8080/api/scan-sarif \
+            -H "Content-Type: application/json" \
+            -o results.sarif
+
+          # Также получаем JSON для анализа
+          curl -sf -X POST http://localhost:8080/api/scan \
+            -H "Content-Type: application/json" \
+            -o results.json
+
+          kill $SCANNER_PID 2>/dev/null || true
+
+          # Парсим результаты
+          DETECTED=$(python3 -c "import json; d=json.load(open('results.json')); print(d['summary']['detected'])")
+          TOTAL=$(python3 -c "import json; d=json.load(open('results.json')); print(d['summary']['totalChecks'])")
+          ERRORS=$(python3 -c "import json; d=json.load(open('results.json')); print(d['summary']['errors'])")
+
+          echo "detected=$DETECTED" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "errors=$ERRORS" >> $GITHUB_OUTPUT
+
+          echo "## Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total checks | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| Detected | **$DETECTED** |" >> $GITHUB_STEP_SUMMARY
+          echo "| Errors | $ERRORS |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+          category: keycloak-security
+
+      - name: Upload scan results as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: keycloak-scan-results
+          path: |
+            results.json
+            results.sarif
+
+      - name: Check threshold
+        run: |
+          MAX_DETECTED=${{ github.event.inputs.max_detected || '0' }}
+          DETECTED=${{ steps.scan.outputs.detected }}
+
+          if [ "$MAX_DETECTED" -gt 0 ] && [ "$DETECTED" -gt "$MAX_DETECTED" ]; then
+            echo "::error::Security scan found $DETECTED issues (threshold: $MAX_DETECTED)"
+            exit 1
+          fi
+
+          echo "Scan completed: $DETECTED findings detected"

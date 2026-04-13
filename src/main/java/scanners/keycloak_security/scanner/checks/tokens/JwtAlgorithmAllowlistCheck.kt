@@ -33,7 +33,7 @@ class JwtAlgorithmAllowlistCheck : SecurityCheck {
             val activeKeys = context.adminService.getRealmKeys()
 
             activeKeys
-                .filter { it.use.name == "sig" && it.status == "ACTIVE" }
+                .filter { it.use.name.equals("sig", ignoreCase = true) && it.status == "ACTIVE" }
                 .forEach { key ->
                     val alg = key.algorithm ?: "unknown"
 

@@ -37,24 +37,9 @@ class ConfidentialClientAuthCheck : SecurityCheck {
                 if (client.isPublicClient == true) return@forEach
                 if (client.isBearerOnly == true) return@forEach
 
-                // Confidential client — проверяем метод аутентификации
-                val authMethod = client.clientAuthenticatorType ?: "client-secret"
+                val authMethod = client.clientAuthenticatorType ?: ""
 
-                // client-secret — допустимо, но client-secret-post менее безопасен чем client-secret-basic
-                // Лучшие варианты: client-secret-jwt, private-key-jwt, client-x509
-                if (authMethod == "client-secret" || authMethod == "client-secret-post") {
-                    // Это базовая аутентификация — OK для L1/L2, но проверяем что secret задан
-                    val hasServiceAccount = client.isServiceAccountsEnabled == true
-                    val hasStandardFlow = client.isStandardFlowEnabled == true
-
-                    if (hasServiceAccount || hasStandardFlow) {
-                        // OK — клиент имеет аутентификацию. Но если нет secret — проблема
-                        // (мы не можем прочитать secret через API, но можем проверить тип)
-                    }
-                }
-
-                // Если клиент не имеет аутентификации вообще — проблема
-                if (authMethod.isNullOrEmpty()) {
+                if (authMethod.isEmpty()) {
                     findings += Finding(
                         id = id(),
                         title = "Confidential client '${client.clientId}' без аутентификации",
@@ -69,6 +54,25 @@ class ConfidentialClientAuthCheck : SecurityCheck {
                             Evidence("clientAuthenticatorType", "не задан")
                         ),
                         recommendation = "Настройте Client Authenticator для клиента '${client.clientId}'"
+                    )
+                } else if (authMethod in listOf("client-secret", "client-secret-post")) {
+                    val severity = if (client.isServiceAccountsEnabled == true) Severity.MEDIUM else Severity.LOW
+                    findings += Finding(
+                        id = id(),
+                        title = "Confidential client '${client.clientId}' использует shared secret",
+                        description = "Клиент '${client.clientId}' аутентифицируется методом '$authMethod'. " +
+                                "Shared secret подвержен утечке и не обеспечивает защиту от replay-атак. " +
+                                "ASVS V10.4.10 рекомендует методы на основе public-key криптографии.",
+                        severity = severity,
+                        status = CheckStatus.DETECTED,
+                        realm = context.realmName,
+                        clientId = client.clientId,
+                        evidence = listOf(
+                            Evidence("clientId", client.clientId),
+                            Evidence("clientAuthenticatorType", authMethod),
+                            Evidence("serviceAccountEnabled", client.isServiceAccountsEnabled == true)
+                        ),
+                        recommendation = "Переключите на 'private_key_jwt' или 'client-x509' для стойкой аутентификации"
                     )
                 }
             }

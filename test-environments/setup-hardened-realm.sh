@@ -86,7 +86,7 @@ curl -s -X POST "$KC_URL/admin/realms/$REALM/clients" -H "$AUTH" -H "$CT" -d '{
   "standardFlowEnabled": false,
   "implicitFlowEnabled": false,
   "directAccessGrantsEnabled": false,
-  "fullScopeAllowed": true,
+  "fullScopeAllowed": false,
   "consentRequired": false,
   "secret": "'$SCANNER_SECRET'",
   "attributes": {
@@ -101,6 +101,14 @@ echo "[3/10] Granting realm-admin role to service account..."
 CLIENT_UUID=$(curl -s "$KC_URL/admin/realms/$REALM/clients?clientId=$SCANNER_CLIENT" -H "$AUTH" \
   | $PY -c "import sys,json; print(json.load(sys.stdin)[0]['id'])" 2>/dev/null)
 
+# Remove default "Client IP Address" mapper (contains "address" → triggers 8.2.3 sensitive check)
+CIP_MAPPER_ID=$(curl -s "$KC_URL/admin/realms/$REALM/clients/$CLIENT_UUID/protocol-mappers/models" -H "$AUTH" \
+  | $PY -c "import sys,json;mappers=json.load(sys.stdin);matches=[m['id'] for m in mappers if m.get('name')=='Client IP Address'];print(matches[0] if matches else '')" 2>/dev/null)
+if [ -n "$CIP_MAPPER_ID" ]; then
+  curl -s -X DELETE "$KC_URL/admin/realms/$REALM/clients/$CLIENT_UUID/protocol-mappers/models/$CIP_MAPPER_ID" -H "$AUTH"
+  echo "  Removed 'Client IP Address' mapper"
+fi
+
 SA_USER_ID=$(curl -s "$KC_URL/admin/realms/$REALM/clients/$CLIENT_UUID/service-account-user" -H "$AUTH" \
   | $PY -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null)
 
@@ -110,6 +118,11 @@ RM_UUID=$(curl -s "$KC_URL/admin/realms/$REALM/clients?clientId=realm-management
 ADMIN_ROLE=$(curl -s "$KC_URL/admin/realms/$REALM/clients/$RM_UUID/roles/realm-admin" -H "$AUTH")
 
 curl -s -X POST "$KC_URL/admin/realms/$REALM/users/$SA_USER_ID/role-mappings/clients/$RM_UUID" \
+  -H "$AUTH" -H "$CT" -d "[$ADMIN_ROLE]"
+
+# With fullScopeAllowed=false, roles must be explicitly mapped to client scope
+# so they appear in the access token
+curl -s -X POST "$KC_URL/admin/realms/$REALM/clients/$CLIENT_UUID/scope-mappings/clients/$RM_UUID" \
   -H "$AUTH" -H "$CT" -d "[$ADMIN_ROLE]"
 
 # ============================================================
@@ -168,7 +181,16 @@ curl -s -X POST "$KC_URL/admin/realms/$REALM/clients/$CLIENT_UUID/protocol-mappe
 # 5. CONFIGURE CLIENT SCOPES for scanner-client
 # Fixes: 8.2.3 (sensitive data in default scopes)
 # ============================================================
-echo "[5/10] Restricting default client scopes..."
+echo "[5/10] Configuring client scopes..."
+# Ensure openid scope is assigned (needed for UserInfo endpoint)
+OPENID_SCOPE_ID=$(curl -s "$KC_URL/admin/realms/$REALM/client-scopes" -H "$AUTH" \
+  | $PY -c "import sys,json; scopes=json.load(sys.stdin);
+matches=[s['id'] for s in scopes if s['name']=='openid'];
+print(matches[0] if matches else '')" 2>/dev/null)
+if [ -n "$OPENID_SCOPE_ID" ]; then
+  curl -s -X PUT "$KC_URL/admin/realms/$REALM/clients/$CLIENT_UUID/default-client-scopes/$OPENID_SCOPE_ID" -H "$AUTH"
+fi
+
 # Remove sensitive scopes from defaults (profile, email → optional)
 for SCOPE_NAME in profile email; do
   SCOPE_ID=$(curl -s "$KC_URL/admin/realms/$REALM/client-scopes" -H "$AUTH" \
@@ -199,45 +221,26 @@ curl -s -X PUT "$KC_URL/admin/realms/$REALM/clients/$ADMINCLI_UUID" -H "$AUTH" -
 # 7. GENERATE RSA 3072-bit KEYS (replace default 2048)
 # Fixes: 11.2.3 (RSA key strength)
 # ============================================================
-echo "[7/10] Generating RSA 3072-bit keys..."
-# SIG key
-curl -s -X POST "$KC_URL/admin/realms/$REALM/components" -H "$AUTH" -H "$CT" -d '{
-  "name": "rsa-4096-sig",
-  "providerId": "rsa-generated",
-  "providerType": "org.keycloak.keys.KeyProvider",
-  "parentId": "'$REALM'",
-  "config": {
-    "keySize": ["4096"],
-    "priority": ["200"],
-    "active": ["true"],
-    "algorithm": ["RS256"]
-  }
-}'
-# ENC key
-curl -s -X POST "$KC_URL/admin/realms/$REALM/components" -H "$AUTH" -H "$CT" -d '{
-  "name": "rsa-4096-enc",
-  "providerId": "rsa-generated",
-  "providerType": "org.keycloak.keys.KeyProvider",
-  "parentId": "'$REALM'",
-  "config": {
-    "keySize": ["4096"],
-    "priority": ["200"],
-    "active": ["true"],
-    "algorithm": ["RSA-OAEP"]
-  }
-}'
+echo "[7/10] Replacing RSA keys with 4096-bit..."
+# Get realm internal ID for parentId
+REALM_ID=$(curl -s "$KC_URL/admin/realms/$REALM" -H "$AUTH" \
+  | $PY -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null)
 
-# Disable default 2048-bit RSA keys (keep our 4096-bit ones)
-echo "  Removing default 2048-bit RSA keys..."
-DEFAULT_KEYS=$(curl -s "$KC_URL/admin/realms/$REALM/components?type=org.keycloak.keys.KeyProvider" -H "$AUTH" \
+# Create 4096-bit keys FIRST (so Keycloak always has RSA keys available)
+curl -s -X POST "$KC_URL/admin/realms/$REALM/components" -H "$AUTH" -H "$CT" \
+  -d '{"name":"rsa-4096-sig","providerId":"rsa-generated","providerType":"org.keycloak.keys.KeyProvider","parentId":"'"$REALM_ID"'","config":{"keySize":["4096"],"priority":["200"],"active":["true"],"algorithm":["RS256"]}}'
+curl -s -X POST "$KC_URL/admin/realms/$REALM/components" -H "$AUTH" -H "$CT" \
+  -d '{"name":"rsa-4096-enc","providerId":"rsa-enc-generated","providerType":"org.keycloak.keys.KeyProvider","parentId":"'"$REALM_ID"'","config":{"keySize":["4096"],"priority":["200"],"active":["true"],"algorithm":["RSA-OAEP"]}}'
+
+# NOW delete default 2048-bit keys (our 4096 keys ensure no auto-regeneration)
+DEFAULT_RSA=$(curl -s "$KC_URL/admin/realms/$REALM/components?type=org.keycloak.keys.KeyProvider" -H "$AUTH" \
   | $PY -c "
 import sys,json
-comps=json.load(sys.stdin)
-for c in comps:
-  if c['providerId'] in ('rsa-generated','rsa-enc-generated') and c['name'] not in ('rsa-4096-sig','rsa-4096-enc'):
+for c in json.load(sys.stdin):
+  if 'rsa' in c['providerId'] and c['name'] not in ('rsa-4096-sig','rsa-4096-enc'):
     print(c['id'])
 " 2>/dev/null)
-for KEY_ID in $DEFAULT_KEYS; do
+for KEY_ID in $DEFAULT_RSA; do
   curl -s -X DELETE "$KC_URL/admin/realms/$REALM/components/$KEY_ID" -H "$AUTH"
 done
 
@@ -297,6 +300,18 @@ curl -s -X PUT "$KC_URL/admin/realms/$REALM/authentication/required-actions/CONF
 # ============================================================
 # 10. VERIFY CONNECTION
 # ============================================================
+# Final cleanup: remove any auto-generated default RSA keys
+DEFAULT_RSA2=$(curl -s "$KC_URL/admin/realms/$REALM/components?type=org.keycloak.keys.KeyProvider" -H "$AUTH" \
+  | $PY -c "
+import sys,json
+for c in json.load(sys.stdin):
+  if 'rsa' in c['providerId'] and c['name'] not in ('rsa-4096-sig','rsa-4096-enc'):
+    print(c['id'])
+" 2>/dev/null)
+for KEY_ID in $DEFAULT_RSA2; do
+  curl -s -X DELETE "$KC_URL/admin/realms/$REALM/components/$KEY_ID" -H "$AUTH"
+done
+
 echo "[10/10] Verifying connection..."
 TEST_TOKEN=$(curl -s -X POST "$KC_URL/realms/$REALM/protocol/openid-connect/token" \
   -d "grant_type=client_credentials&client_id=$SCANNER_CLIENT&client_secret=$SCANNER_SECRET" \
@@ -307,9 +322,7 @@ echo ""
 echo "=== Done! Scan with client_credentials: ==="
 echo '{"serverUrl":"'$KC_URL'","realm":"'$REALM'","clientId":"'$SCANNER_CLIENT'","clientSecret":"'$SCANNER_SECRET'","grantType":"client_credentials"}'
 echo ""
-echo "=== Findings that CANNOT be fixed via realm config (dev mode): ==="
-echo "  - 12.1.1, 12.2.1: TLS (Keycloak runs in dev mode without TLS)"
-echo "  - 14.3.2: Cache-Control headers (Keycloak server behavior)"
-echo "  - 3.3.2: SameSite cookies (Keycloak server behavior)"
-echo "  - 6.1.2: Password blacklist (requires file on Keycloak server)"
-echo "  - 9.x: JWT checks ERROR (scanner code bug: getAccessToken() hardcodes password grant)"
+echo "=== Findings that CANNOT be fixed via Admin API: ==="
+echo "  - 12.2.2: Self-signed cert (needs real CA cert)"
+echo "  - 12.1.2: Cipher suites (needs Keycloak server TLS config)"
+echo "  - 6.1.2: Password blacklist (needs blacklist file on Keycloak server)"

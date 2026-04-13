@@ -17,7 +17,7 @@ class CookiesSecureCheck : SecurityCheck {
         val start = System.currentTimeMillis()
         val realm = context.adminService.getRealm()
 
-        val requireSsl = realm?.sslRequired?.let { it != "NONE" } ?: false
+        val requireSsl = realm?.sslRequired?.let { !it.equals("none", ignoreCase = true) } ?: false
 
         return if (!requireSsl) {
             CheckResult(

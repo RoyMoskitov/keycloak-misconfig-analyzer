@@ -4,197 +4,112 @@ import org.springframework.stereotype.Component
 import scanners.keycloak_security.model.*
 import scanners.keycloak_security.scanner.SecurityCheck
 import scanners.keycloak_security.scanner.SecurityCheckHelper.createErrorResult
+import scanners.keycloak_security.scanner.SecurityCheckHelper.buildCheckResult
 
+/**
+ * ASVS V9.1.3: "Verify that key material used to validate self-contained tokens is from
+ * trusted pre-configured sources for the token issuer, preventing attackers from specifying
+ * untrusted sources and keys. For JWTs, headers such as 'jku', 'x5u', and 'jwk' must be
+ * validated against an allowlist of trusted sources."
+ *
+ * В Keycloak: проверяем что JWKS URLs клиентов (для private_key_jwt auth) используют HTTPS,
+ * и что realm ключи подписи корректно настроены.
+ */
 @Component
 class TrustedKeySourcesCheck : SecurityCheck {
     override fun id() = "9.1.3"
-    override fun title() = "Доверенные источники ключей (jku, jwk, x5u)"
-    override fun description() = "Проверка использования только внутренних JWKS endpoint и отсутствия внешних key URLs"
+    override fun title() = "Доверенные источники ключей"
+    override fun description() = "Проверка, что ключевой материал для валидации токенов из доверенных источников (ASVS V9.1.3)"
     override fun severity() = Severity.HIGH
+
+    companion object {
+        val INTERNAL_CLIENTS = setOf(
+            "account", "account-console", "admin-cli",
+            "broker", "realm-management", "security-admin-console"
+        )
+    }
 
     override fun run(context: CheckContext): CheckResult {
         val start = System.currentTimeMillis()
         val findings = mutableListOf<Finding>()
 
         try {
-            val realm = context.adminService.getRealm()
-            val client = context.adminService.getClientRepresentation()
-
-            if (client == null) {
-                return CheckResult(
-                    checkId = id(),
-                    status = CheckStatus.ERROR,
-                    findings = listOf(Finding(
-                        id = id(),
-                        title = "Клиент не найден",
-                        description = "Не удалось получить клиент для проверки источников ключей",
-                        severity = Severity.HIGH,
-                        status = CheckStatus.ERROR,
-                        realm = context.realmName,
-                        evidence = emptyList(),
-                        recommendation = "Убедитесь, что clientId в конфигурации указан верно"
-                    )),
-                    durationMs = System.currentTimeMillis() - start
+            // 1. Проверяем realm ключи — наличие активного ключа подписи
+            val publicKey = context.adminService.getRealmPublicKey()
+            if (publicKey.isNullOrEmpty()) {
+                findings += Finding(
+                    id = id(),
+                    title = "Realm не имеет активного ключа подписи",
+                    description = "В Realm '${context.realmName}' не найден активный ключ подписи (SIG).",
+                    severity = Severity.HIGH,
+                    status = CheckStatus.DETECTED,
+                    realm = context.realmName,
+                    evidence = listOf(Evidence("activeSigningKey", "not found")),
+                    recommendation = "Настройте ключи подписи токенов в Realm → Keys"
                 )
             }
 
-            val clientId = client.clientId ?: "unknown"
+            // 2. Проверяем JWKS URL клиентов с private_key_jwt
+            val clients = context.adminService.getClients()
+            clients.forEach { client ->
+                if (client.clientId in INTERNAL_CLIENTS) return@forEach
+                if (client.clientId?.endsWith("-realm") == true) return@forEach
 
-            // 1. Проверка наличия публичного ключа у realm
-            val publicKey = context.adminService.getRealmPublicKey()
+                val attrs = client.attributes ?: emptyMap()
+                val useJwksUrl = attrs["use.jwks.url"]?.toBoolean() ?: false
+                val jwksUrl = attrs["jwks.url"] ?: ""
 
-            if (publicKey.isNullOrEmpty()) {
-                findings.add(Finding(
-                    id = id(),
-                    title = "Realm не имеет активного ключа подписи",
-                    description = "В Realm '${context.realmName}' не найден активный ключ подписи (SIG). " +
-                            "Без ключа подписи токены не могут быть верифицированы.",
-                    severity = Severity.HIGH,
-                    status = CheckStatus.DETECTED,
-                    realm = context.realmName,
-                    evidence = listOf(
-                        Evidence("realmName", context.realmName),
-                        Evidence("activeSigningKey", "not found")
-                    ),
-                    recommendation = "Настройте ключи подписи токенов в разделе Realm → Keys"
-                ))
-            }
-
-            // 2. Проверка использования внешних ключей через KeysMetadata
-            val isUsingExternalKeys = context.adminService.isUsingExternalKeys()
-
-            if (isUsingExternalKeys) {
-                findings.add(Finding(
-                    id = id(),
-                    title = "Realm использует внешние ключи",
-                    description = "В конфигурации ключей realm '${context.realmName}' обнаружены ссылки на внешние URL",
-                    severity = Severity.HIGH,
-                    status = CheckStatus.DETECTED,
-                    realm = context.realmName,
-                    evidence = listOf(
-                        Evidence("realmName", context.realmName),
-                        Evidence("issue", "external key URLs detected")
-                    ),
-                    recommendation = "Удалите все внешние ссылки на ключи. Используйте только внутренний JWKS endpoint Keycloak"
-                ))
-            }
-
-            // 3. Проверка атрибутов клиента на наличие внешних key URLs
-            val clientAttributes = client.attributes ?: emptyMap()
-
-            // Проверяем потенциально опасные атрибуты
-            val externalKeyUrls = clientAttributes.filter { (key, value) ->
-                key.contains("jwk", ignoreCase = true) ||
-                        key.contains("x5u", ignoreCase = true) ||
-                        key.contains("jku", ignoreCase = true) ||
-                        (key.contains("key") && value.startsWith("http", ignoreCase = true))
-            }
-
-            if (externalKeyUrls.isNotEmpty()) {
-                findings.add(Finding(
-                    id = id(),
-                    title = "Клиент использует внешние источники ключей",
-                    description = "Клиент '$clientId' настроен использовать внешние URL для ключей",
-                    severity = Severity.HIGH,
-                    status = CheckStatus.DETECTED,
-                    realm = context.realmName,
-                    evidence = listOf(
-                        Evidence("clientId", clientId),
-                        Evidence("externalKeyConfigs",
-                            externalKeyUrls.entries.joinToString { "${it.key}=${it.value}" }
+                if (useJwksUrl && jwksUrl.isNotBlank()) {
+                    // JWKS URL настроен — проверяем что он HTTPS
+                    if (jwksUrl.startsWith("http://")) {
+                        findings += Finding(
+                            id = id(),
+                            title = "JWKS URL клиента '${client.clientId}' использует HTTP",
+                            description = "Клиент '${client.clientId}' загружает ключи с $jwksUrl (без TLS). " +
+                                    "Атакующий может подменить ключи через MITM и аутентифицироваться от имени клиента.",
+                            severity = Severity.HIGH,
+                            status = CheckStatus.DETECTED,
+                            realm = context.realmName,
+                            clientId = client.clientId,
+                            evidence = listOf(
+                                Evidence("clientId", client.clientId),
+                                Evidence("jwks.url", jwksUrl),
+                                Evidence("use.jwks.url", true)
+                            ),
+                            recommendation = "Используйте HTTPS URL для JWKS endpoint клиента"
                         )
-                    ),
-                    recommendation = "Удалите конфигурации внешних ключей. Используйте только внутренний JWKS endpoint Keycloak"
-                ))
-            }
+                    }
+                }
 
-            // 4. Проверка правильного issuer
-            val issuer = realm.attributes?.get("issuer") ?: ""
-            val expectedIssuer = "${context.adminService.props.serverUrl}/realms/${context.realmName}"
-
-            if (issuer.isNotEmpty() && issuer != expectedIssuer) {
-                findings.add(Finding(
-                    id = id(),
-                    title = "Нестандартный issuer в конфигурации",
-                    description = "Realm имеет нестандартный issuer URL",
-                    severity = Severity.MEDIUM,
-                    status = CheckStatus.DETECTED,
-                    realm = context.realmName,
-                    evidence = listOf(
-                        Evidence("configuredIssuer", issuer),
-                        Evidence("expectedIssuer", expectedIssuer)
-                    ),
-                    recommendation = "Убедитесь, что issuer соответствует стандартному формату Keycloak"
-                ))
-            }
-
-            // 5. Проверка протокола OpenID Connect Configuration
-            // Keycloak автоматически предоставляет .well-known конфигурацию
-            // Проверяем, что клиент использует стандартные endpoint'ы
-
-            val usesCustomEndpoints = clientAttributes.any { (key, value) ->
-                key.contains("endpoint") &&
-                        !value.contains("/realms/${context.realmName}/protocol/openid-connect")
-            }
-
-            if (usesCustomEndpoints) {
-                findings.add(Finding(
-                    id = id(),
-                    title = "Клиент использует кастомные OIDC endpoints",
-                    description = "Клиент '$clientId' настроен на нестандартные OIDC endpoints",
-                    severity = Severity.MEDIUM,
-                    status = CheckStatus.DETECTED,
-                    realm = context.realmName,
-                    evidence = listOf(
-                        Evidence("clientId", clientId)
-                    ),
-                    recommendation = "Используйте стандартные endpoints Keycloak для гарантии безопасности"
-                ))
-            }
-
-            // 6. Проверка использования стандартного JWKS endpoint
-            val jwksUriConfigured = clientAttributes.any { (key, value) ->
-                key.contains("jwks", ignoreCase = true) ||
-                        key.contains("certs", ignoreCase = true)
-            }
-
-            if (jwksUriConfigured) {
-                // Если клиент явно настраивает JWKS URI, проверяем что это внутренний
-                val jwksUri = clientAttributes.entries.firstOrNull {
-                    it.key.contains("jwks", ignoreCase = true) ||
-                            it.key.contains("certs", ignoreCase = true)
-                }?.value ?: ""
-
-                if (!jwksUri.contains("/realms/${context.realmName}/protocol/openid-connect/certs")) {
-                    findings.add(Finding(
+                // 3. Проверяем наличие подозрительных атрибутов с внешними URL ключей
+                val externalKeyAttrs = attrs.filter { (key, value) ->
+                    (key.contains("jku", ignoreCase = true) ||
+                            key.contains("x5u", ignoreCase = true)) &&
+                            value.startsWith("http")
+                }
+                if (externalKeyAttrs.isNotEmpty()) {
+                    findings += Finding(
                         id = id(),
-                        title = "Клиент использует нестандартный JWKS endpoint",
-                        description = "Клиент '$clientId' настроен на использование кастомного JWKS endpoint",
+                        title = "Клиент '${client.clientId}' ссылается на внешние источники ключей",
+                        description = "Атрибуты клиента содержат ссылки на внешние URL ключей: " +
+                                externalKeyAttrs.entries.joinToString { "${it.key}=${it.value}" },
                         severity = Severity.HIGH,
                         status = CheckStatus.DETECTED,
                         realm = context.realmName,
+                        clientId = client.clientId,
                         evidence = listOf(
-                            Evidence("clientId", clientId),
-                            Evidence("jwksUri", jwksUri)
+                            Evidence("clientId", client.clientId),
+                            Evidence("externalKeyUrls", externalKeyAttrs.entries.joinToString { "${it.key}=${it.value}" })
                         ),
-                        recommendation = "Используйте стандартный JWKS endpoint Keycloak: /realms/{realm}/protocol/openid-connect/certs"
-                    ))
+                        recommendation = "Удалите внешние ссылки на ключи. Используйте встроенный JWKS endpoint Keycloak."
+                    )
                 }
             }
-
-            return createResult(findings, start)
 
         } catch (e: Exception) {
             return createErrorResult(id(), title(), e, start, context.realmName)
         }
-    }
 
-    private fun createResult(findings: List<Finding>, start: Long): CheckResult {
-        return CheckResult(
-            checkId = id(),
-            status = if (findings.isNotEmpty()) CheckStatus.DETECTED else CheckStatus.OK,
-            findings = findings,
-            durationMs = System.currentTimeMillis() - start
-        )
+        return buildCheckResult(id(), title(), findings, start, context.realmName)
     }
 }

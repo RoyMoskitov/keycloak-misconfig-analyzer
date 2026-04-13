@@ -28,6 +28,8 @@ class KeycloakScanner(
         adminService.props.grantType = grantType
         adminService.props.authRealm = authRealm
 
+        adminService.invalidateClient()
+
         if (grantType == "client_credentials") {
             adminService.props.clientSecret = clientSecret
             adminService.props.username = ""
@@ -59,7 +61,7 @@ class KeycloakScanner(
             summary = Summary(
                 totalChecks = results.size,
                 detected = results.count { it.status == CheckStatus.DETECTED },
-                ok = results.count { it.status == CheckStatus.OK },
+                ok = results.count { it.status in listOf(CheckStatus.OK, CheckStatus.INFO, CheckStatus.WARNING) },
                 errors = results.count { it.status == CheckStatus.ERROR }
             )
         )
