@@ -24,6 +24,9 @@ jobs:
   security-scan:
     name: Keycloak DAST Scan
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
 
     steps:
       - name: Checkout
@@ -83,8 +86,9 @@ jobs:
           SCANNER_PID=$!
 
           for i in $(seq 1 60); do
-            if curl -sf -o /dev/null http://localhost:8080/api/scan 2>/dev/null; then
-              echo "Scanner ready"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/scan 2>/dev/null)
+            if [ "$STATUS" = "405" ] || [ "$STATUS" = "200" ]; then
+              echo "Scanner ready (HTTP $STATUS)"
               break
             fi
             sleep 2
@@ -121,7 +125,7 @@ jobs:
           echo "| Errors | $ERRORS |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always() && hashFiles('results.sarif') != ''
         with:
           sarif_file: results.sarif
