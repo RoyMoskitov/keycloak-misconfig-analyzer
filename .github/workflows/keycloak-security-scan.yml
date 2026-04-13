@@ -73,38 +73,48 @@ jobs:
         run: |
           bash test-environments/setup-vulnerable-realm.sh http://localhost:8180 admin adminpass
 
-      - name: Run security scan
-        id: scan
+      - name: Start scanner
         run: |
-          java -jar target/*.jar \
+          nohup java -jar target/*.jar \
             --keycloak-audit.server-url=http://localhost:8180 \
             --keycloak-audit.realm=${{ github.event.inputs.realm || 'vulnerable-test' }} \
             --keycloak-audit.client-id=admin-cli \
             --keycloak-audit.username=admin \
             --keycloak-audit.password=adminpass \
-            --server.port=8080 &
-          SCANNER_PID=$!
+            --server.port=8080 \
+            > scanner.log 2>&1 &
+          echo $! > scanner.pid
+          echo "Scanner PID: $(cat scanner.pid)"
 
+          echo "Waiting for scanner to start..."
           for i in $(seq 1 60); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/scan 2>/dev/null)
             if [ "$STATUS" = "405" ] || [ "$STATUS" = "200" ]; then
-              echo "Scanner ready (HTTP $STATUS)"
+              echo "Scanner ready (HTTP $STATUS) after ${i}x2 seconds"
               break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "Scanner failed to start. Logs:"
+              cat scanner.log
+              exit 1
             fi
             sleep 2
           done
 
-          # SARIF export
-          curl -sf -X POST http://localhost:8080/api/scan-sarif \
+      - name: Run security scan
+        id: scan
+        run: |
+          echo "Running SARIF scan..."
+          curl -s -X POST http://localhost:8080/api/scan-sarif \
             -H "Content-Type: application/json" \
-            -o results.sarif || true
+            -o results.sarif
+          echo "SARIF saved ($(wc -c < results.sarif) bytes)"
 
-          # JSON export
-          curl -sf -X POST http://localhost:8080/api/scan \
+          echo "Running JSON scan..."
+          curl -s -X POST http://localhost:8080/api/scan \
             -H "Content-Type: application/json" \
             -o results.json
-
-          kill $SCANNER_PID 2>/dev/null || true
+          echo "JSON saved ($(wc -c < results.json) bytes)"
 
           DETECTED=$(python3 -c "import json; d=json.load(open('results.json')); print(d['summary']['detected'])")
           TOTAL=$(python3 -c "import json; d=json.load(open('results.json')); print(d['summary']['totalChecks'])")
@@ -123,6 +133,14 @@ jobs:
           echo "| Detected | **$DETECTED** |" >> $GITHUB_STEP_SUMMARY
           echo "| OK | $OK |" >> $GITHUB_STEP_SUMMARY
           echo "| Errors | $ERRORS |" >> $GITHUB_STEP_SUMMARY
+
+          echo ""
+          echo "Scan complete: $DETECTED detected, $OK ok, $ERRORS errors out of $TOTAL checks"
+
+      - name: Stop scanner
+        if: always()
+        run: |
+          kill $(cat scanner.pid) 2>/dev/null || true
 
       - name: Upload SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
