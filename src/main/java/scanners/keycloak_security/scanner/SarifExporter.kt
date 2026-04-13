@@ -1,5 +1,6 @@
 package scanners.keycloak_security.scanner
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.stereotype.Component
 import scanners.keycloak_security.model.CheckStatus
@@ -179,6 +180,7 @@ data class SarifPhysicalLocation(
     val artifactLocation: SarifArtifactLocation
 )
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 data class SarifArtifactLocation(
     val uri: String,
     val uriBaseId: String? = null

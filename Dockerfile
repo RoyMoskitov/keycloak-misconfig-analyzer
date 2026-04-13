@@ -8,6 +8,7 @@ RUN ./mvnw package -DskipTests -B
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY --from=build /app/target/*.jar app.jar
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+COPY --from=build /app/target/*.jar scanner.jar
+
+# CLI mode by default, web mode with --no-cli
+ENTRYPOINT ["java", "-jar", "scanner.jar"]
