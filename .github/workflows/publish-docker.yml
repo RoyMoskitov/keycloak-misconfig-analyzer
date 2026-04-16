@@ -15,6 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Lowercase repository owner
+        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -28,5 +31,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/keycloak-scanner:latest
-            ghcr.io/${{ github.repository_owner }}/keycloak-scanner:${{ github.sha }}
+            ghcr.io/${{ env.OWNER_LC }}/keycloak-scanner:latest
+            ghcr.io/${{ env.OWNER_LC }}/keycloak-scanner:${{ github.sha }}
