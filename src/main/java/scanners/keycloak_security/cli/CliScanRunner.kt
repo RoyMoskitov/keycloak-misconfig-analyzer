@@ -7,6 +7,8 @@ import org.springframework.core.env.Environment
 import org.springframework.stereotype.Component
 import scanners.keycloak_security.scanner.KeycloakScanner
 import scanners.keycloak_security.scanner.SarifExporter
+import scanners.keycloak_security.scanner.attack.AttackVectorAnalyzer
+import scanners.keycloak_security.scanner.attack.AttackStatus
 import java.io.File
 
 /**
@@ -28,6 +30,7 @@ import java.io.File
 class CliScanRunner(
     private val scanner: KeycloakScanner,
     private val sarifExporter: SarifExporter,
+    private val attackAnalyzer: AttackVectorAnalyzer,
     private val environment: Environment
 ) : CommandLineRunner {
 
@@ -54,17 +57,30 @@ class CliScanRunner(
         File(outputFile).writeText(content)
         System.err.println("Results saved to: $outputFile ($format)")
 
+        val attacks = attackAnalyzer.analyze(report)
+        val attacksFile = File(outputFile).resolveSibling("attacks.json").absolutePath
+        File(attacksFile).writeText(mapper.writeValueAsString(attacks))
+        System.err.println("Attack vectors saved to: $attacksFile")
+
+        val fullyEnabled = attacks.count { it.status == AttackStatus.FULLY_ENABLED }
+        val partial = attacks.count { it.status == AttackStatus.PARTIALLY_ENABLED }
+        val mitigated = attacks.count { it.status == AttackStatus.MITIGATED }
+
         val detected = report.summary.detected
         val total = report.summary.totalChecks
         val errors = report.summary.errors
 
         System.err.println("")
         System.err.println("Total: $total | Detected: $detected | OK: ${report.summary.ok} | Errors: $errors")
+        System.err.println("Attacks: $fullyEnabled FULLY_ENABLED | $partial PARTIAL | $mitigated MITIGATED")
 
         // Output summary to stdout for CI/CD parsing
         println("DETECTED=$detected")
         println("TOTAL=$total")
         println("ERRORS=$errors")
+        println("ATTACKS_FULLY_ENABLED=$fullyEnabled")
+        println("ATTACKS_PARTIAL=$partial")
+        println("ATTACKS_MITIGATED=$mitigated")
 
         if (failOn >= 0 && detected > failOn) {
             System.err.println("")
