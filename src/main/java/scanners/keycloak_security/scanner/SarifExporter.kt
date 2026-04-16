@@ -17,10 +17,6 @@ import scanners.keycloak_security.model.Severity
 class SarifExporter {
 
     fun export(report: ScanReport): SarifLog {
-        val allFindings = report.results.flatMap { check ->
-            check.findings.map { finding -> check.checkId to finding }
-        }
-
         // Собираем уникальные rules из всех check results
         val rules = report.results.map { check ->
             SarifRule(
@@ -31,14 +27,7 @@ class SarifExporter {
                 fullDescription = SarifMessage(
                     text = check.findings.firstOrNull()?.description ?: ""
                 ),
-                defaultConfiguration = SarifRuleConfiguration(
-                    level = when (check.findings.maxByOrNull { it.severity }?.severity) {
-                        Severity.HIGH -> "error"
-                        Severity.MEDIUM -> "warning"
-                        Severity.LOW -> "note"
-                        else -> "note"
-                    }
-                ),
+                defaultConfiguration = SarifRuleConfiguration(level = "error"),
                 helpUri = "https://owasp.org/www-project-application-security-verification-standard/",
                 properties = SarifRuleProperties(
                     tags = listOf("security", "keycloak", "owasp-asvs")
@@ -46,23 +35,28 @@ class SarifExporter {
             )
         }.distinctBy { it.id }
 
-        // Конвертируем findings в SARIF results
-        val results = allFindings
-            .filter { (_, finding) -> finding.status == CheckStatus.DETECTED || finding.status == CheckStatus.ERROR }
-            .map { (checkId, finding) ->
+        // Один SARIF result на каждый DETECTED check (агрегация всех findings внутри)
+        val results = report.results
+            .filter { it.status == CheckStatus.DETECTED }
+            .map { check ->
+                val firstFinding = check.findings.firstOrNull()
+                val findingsCount = check.findings.size
+
                 SarifResult(
-                    ruleId = checkId,
-                    level = when (finding.severity) {
-                        Severity.HIGH -> "error"
-                        Severity.MEDIUM -> "warning"
-                        Severity.LOW -> "note"
-                        Severity.INFO -> "note"
-                    },
+                    ruleId = check.checkId,
+                    level = "error",
                     message = SarifMessage(
                         text = buildString {
-                            append(finding.description)
-                            if (finding.recommendation != null) {
-                                append("\n\nRecommendation: ${finding.recommendation}")
+                            append(firstFinding?.description ?: check.checkId)
+                            if (findingsCount > 1) {
+                                append("\n\nDetected in $findingsCount instances:")
+                                check.findings.forEach { f ->
+                                    val loc = listOfNotNull(f.realm, f.clientId).joinToString("/")
+                                    append("\n- ${if (loc.isNotBlank()) loc else "realm-settings"}: ${f.title}")
+                                }
+                            }
+                            if (firstFinding?.recommendation != null) {
+                                append("\n\nRecommendation: ${firstFinding.recommendation}")
                             }
                         }
                     ),
@@ -70,16 +64,16 @@ class SarifExporter {
                         SarifLocation(
                             physicalLocation = SarifPhysicalLocation(
                                 artifactLocation = SarifArtifactLocation(
-                                    uri = "keycloak-config/${finding.realm ?: "unknown"}/${finding.clientId ?: "realm-settings"}.json"
+                                    uri = "keycloak-config/${firstFinding?.realm ?: "unknown"}/${firstFinding?.clientId ?: "realm-settings"}.json"
                                 )
                             )
                         )
                     ),
                     properties = SarifResultProperties(
-                        realm = finding.realm,
-                        clientId = finding.clientId,
-                        severity = finding.severity.name,
-                        evidence = finding.evidence.associate { it.key to it.value?.toString() }
+                        realm = firstFinding?.realm,
+                        clientId = firstFinding?.clientId,
+                        severity = firstFinding?.severity?.name,
+                        evidence = firstFinding?.evidence?.associate { it.key to it.value?.toString() }
                     )
                 )
             }
