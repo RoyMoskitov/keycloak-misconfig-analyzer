@@ -25,16 +25,6 @@ if [ -z "$TOKEN" ]; then echo "ERROR: Failed to get admin token"; exit 1; fi
 AUTH="Authorization: Bearer $TOKEN"
 CT="Content-Type: application/json"
 
-# ============================================================
-# 1. CREATE REALM with hardened settings
-# Fixes: 6.3.1 (brute force), 6.6.3 (OTP brute force),
-#        10.4.9/7.4.3/7.2.4 (revoke refresh token),
-#        10.4.8 (offline session max lifespan),
-#        6.3.5 (events), 6.4.1 (admin token lifespan),
-#        6.4.3 (user token lifespan), 6.2.1 (password length),
-#        11.4.2/KC-PASS-05 (argon2), 6.5.1 (OTP algo),
-#        6.5.4 (OTP digits)
-# ============================================================
 echo "[1/10] Creating realm with hardened settings..."
 curl -s -X POST "$KC_URL/admin/realms" -H "$AUTH" -H "$CT" -d '{
   "realm": "'$REALM'",
@@ -73,10 +63,6 @@ curl -s -X POST "$KC_URL/admin/realms" -H "$AUTH" -H "$CT" -d '{
   "otpPolicyLookAheadWindow": 1
 }'
 
-# ============================================================
-# 2. CREATE SCANNER CLIENT (service account)
-# Fixes: 8.4.1 (fullScopeAllowed=false), 8.3.1 (explicit alg)
-# ============================================================
 echo "[2/10] Creating scanner service-account client..."
 curl -s -X POST "$KC_URL/admin/realms/$REALM/clients" -H "$AUTH" -H "$CT" -d '{
   "clientId": "'$SCANNER_CLIENT'",
@@ -120,17 +106,10 @@ ADMIN_ROLE=$(curl -s "$KC_URL/admin/realms/$REALM/clients/$RM_UUID/roles/realm-a
 curl -s -X POST "$KC_URL/admin/realms/$REALM/users/$SA_USER_ID/role-mappings/clients/$RM_UUID" \
   -H "$AUTH" -H "$CT" -d "[$ADMIN_ROLE]"
 
-# With fullScopeAllowed=false, roles must be explicitly mapped to client scope
-# so they appear in the access token
 curl -s -X POST "$KC_URL/admin/realms/$REALM/clients/$CLIENT_UUID/scope-mappings/clients/$RM_UUID" \
   -H "$AUTH" -H "$CT" -d "[$ADMIN_ROLE]"
 
-# ============================================================
-# 4. ADD PROTOCOL MAPPERS to scanner-client
-# Fixes: 6.8.4 (acr/amr in tokens), 9.2.4 (audience)
-# ============================================================
 echo "[4/10] Adding protocol mappers (acr, audience)..."
-# ACR claim mapper
 curl -s -X POST "$KC_URL/admin/realms/$REALM/clients/$CLIENT_UUID/protocol-mappers/models" \
   -H "$AUTH" -H "$CT" -d '{
   "name": "acr claim",
@@ -177,12 +156,7 @@ curl -s -X POST "$KC_URL/admin/realms/$REALM/clients/$CLIENT_UUID/protocol-mappe
   }
 }'
 
-# ============================================================
-# 5. CONFIGURE CLIENT SCOPES for scanner-client
-# Fixes: 8.2.3 (sensitive data in default scopes)
-# ============================================================
 echo "[5/10] Configuring client scopes..."
-# Ensure openid scope is assigned (needed for UserInfo endpoint)
 OPENID_SCOPE_ID=$(curl -s "$KC_URL/admin/realms/$REALM/client-scopes" -H "$AUTH" \
   | $PY -c "import sys,json; scopes=json.load(sys.stdin);
 matches=[s['id'] for s in scopes if s['name']=='openid'];
@@ -191,7 +165,6 @@ if [ -n "$OPENID_SCOPE_ID" ]; then
   curl -s -X PUT "$KC_URL/admin/realms/$REALM/clients/$CLIENT_UUID/default-client-scopes/$OPENID_SCOPE_ID" -H "$AUTH"
 fi
 
-# Remove sensitive scopes from defaults (profile, email → optional)
 for SCOPE_NAME in profile email; do
   SCOPE_ID=$(curl -s "$KC_URL/admin/realms/$REALM/client-scopes" -H "$AUTH" \
     | $PY -c "import sys,json; scopes=json.load(sys.stdin);
@@ -203,10 +176,6 @@ print(matches[0] if matches else '')" 2>/dev/null)
   fi
 done
 
-# ============================================================
-# 6. HARDEN admin-cli
-# Fixes: 10.1.1 (public client with DAG)
-# ============================================================
 echo "[6/10] Hardening admin-cli..."
 ADMINCLI_UUID=$(curl -s "$KC_URL/admin/realms/$REALM/clients?clientId=admin-cli" -H "$AUTH" \
   | $PY -c "import sys,json; print(json.load(sys.stdin)[0]['id'])" 2>/dev/null)
@@ -217,12 +186,7 @@ curl -s -X PUT "$KC_URL/admin/realms/$REALM/clients/$ADMINCLI_UUID" -H "$AUTH" -
   "directAccessGrantsEnabled": false
 }'
 
-# ============================================================
-# 7. GENERATE RSA 3072-bit KEYS (replace default 2048)
-# Fixes: 11.2.3 (RSA key strength)
-# ============================================================
 echo "[7/10] Replacing RSA keys with 4096-bit..."
-# Get realm internal ID for parentId
 REALM_ID=$(curl -s "$KC_URL/admin/realms/$REALM" -H "$AUTH" \
   | $PY -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null)
 
@@ -232,7 +196,6 @@ curl -s -X POST "$KC_URL/admin/realms/$REALM/components" -H "$AUTH" -H "$CT" \
 curl -s -X POST "$KC_URL/admin/realms/$REALM/components" -H "$AUTH" -H "$CT" \
   -d '{"name":"rsa-4096-enc","providerId":"rsa-enc-generated","providerType":"org.keycloak.keys.KeyProvider","parentId":"'"$REALM_ID"'","config":{"keySize":["4096"],"priority":["200"],"active":["true"],"algorithm":["RSA-OAEP"]}}'
 
-# NOW delete default 2048-bit keys (our 4096 keys ensure no auto-regeneration)
 DEFAULT_RSA=$(curl -s "$KC_URL/admin/realms/$REALM/components?type=org.keycloak.keys.KeyProvider" -H "$AUTH" \
   | $PY -c "
 import sys,json
@@ -244,11 +207,6 @@ for KEY_ID in $DEFAULT_RSA; do
   curl -s -X DELETE "$KC_URL/admin/realms/$REALM/components/$KEY_ID" -H "$AUTH"
 done
 
-# ============================================================
-# 8. HARDEN AUTHENTICATION FLOWS
-# Fixes: 6.3.4 (direct grant MFA), 6.4.3 (reset creds MFA),
-#        7.1.2 (session limits)
-# ============================================================
 echo "[8/10] Hardening authentication flows..."
 
 # 8a. Copy "direct grant" and add OTP → fixes 6.3.4
@@ -288,19 +246,12 @@ if [ -n "$SL_EXEC" ]; then
 fi
 curl -s -X PUT "$KC_URL/admin/realms/$REALM" -H "$AUTH" -H "$CT" -d '{"browserFlow":"browser with session limits"}'
 
-# ============================================================
-# 9. REQUIRED ACTIONS
-# ============================================================
 echo "[9/10] Configuring required actions..."
 curl -s -X PUT "$KC_URL/admin/realms/$REALM/authentication/required-actions/UPDATE_PASSWORD" \
   -H "$AUTH" -H "$CT" -d '{"alias":"UPDATE_PASSWORD","name":"Update Password","enabled":true,"defaultAction":false}'
 curl -s -X PUT "$KC_URL/admin/realms/$REALM/authentication/required-actions/CONFIGURE_TOTP" \
   -H "$AUTH" -H "$CT" -d '{"alias":"CONFIGURE_TOTP","name":"Configure OTP","enabled":true,"defaultAction":true}'
 
-# ============================================================
-# 10. VERIFY CONNECTION
-# ============================================================
-# Final cleanup: remove any auto-generated default RSA keys
 DEFAULT_RSA2=$(curl -s "$KC_URL/admin/realms/$REALM/components?type=org.keycloak.keys.KeyProvider" -H "$AUTH" \
   | $PY -c "
 import sys,json
